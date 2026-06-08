@@ -2637,13 +2637,30 @@ FILE_FORMAT = (TYPE = 'JSON');</pre>
 
         <div id="subsubtab-stset-run" class="subsubtab-content">
         <div class="setup-section">
-          <p class="section-title">1. Get Sample Files</p>
+          <p class="section-title">0. Prep — Start Clean</p>
 
-          <p style="font-size:0.85rem;color:#8b949e;margin-bottom:16px;line-height:1.6;">Two options for obtaining sample data files:</p>
+          <p style="font-size:0.85rem;color:#8b949e;margin-bottom:16px;line-height:1.6;">Before a run, reset to a clean slate so the row count visibly climbs from zero.</p>
 
-          <p style="font-size:0.85rem;color:#8b949e;margin-bottom:12px;line-height:1.6;"><strong style="color:#e6edf3;">(A) Use committed samples</strong> — pre-generated gzipped JSON Lines files in <code>demos/stage-snowpipe/samples/</code> (e.g., <code>clickstream_batch_001.jsonl.gz</code>, <code>clickstream_batch_002.jsonl.gz</code>, etc.).</p>
+          <div class="code-block">
+            <div class="cb-header">
+              <span>Snowflake — prep</span>
+              <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+            </div>
+            <pre>TRUNCATE TABLE KAFKA_DEMO.BATCH.CLICKSTREAM;
+SELECT SYSTEM$PIPE_STATUS('KAFKA_DEMO.BATCH.CLICKSTREAM_PIPE');  -- expect "RUNNING"
+LIST @KAFKA_DEMO.BATCH.CLICKSTREAM_STAGE;                        -- check for leftover files</pre>
+          </div>
 
-          <p style="font-size:0.85rem;color:#8b949e;margin-bottom:12px;line-height:1.6;"><strong style="color:#e6edf3;">(B) Generate fresh files</strong> — use the included generator script to produce new sample batches:</p>
+          <div class="callout" style="margin-bottom:0;">
+            <strong>Note on dedup</strong>
+            <code>TRUNCATE</code> clears the table but does <em>not</em> reset Snowpipe's file load history (that lives in the pipe). The generator gives every file a unique name each run, so this is never a problem — but it's why you should always generate fresh files rather than re-uploading old ones.
+          </div>
+        </div>
+
+        <div class="setup-section">
+          <p class="section-title">1. Generate Sample Files</p>
+
+          <p style="font-size:0.85rem;color:#8b949e;margin-bottom:16px;line-height:1.6;">Generate a fresh batch of gzipped JSON Lines files. Filenames include a UTC timestamp and a unique id, so every run produces new names that Snowpipe will always load.</p>
 
           <div class="code-block">
             <div class="cb-header">
@@ -2655,7 +2672,7 @@ pip install -r requirements.txt
 python generate_events.py --files 5 --rows 1000</pre>
           </div>
 
-          <p style="font-size:0.8rem;color:#8b949e;margin-bottom:0;line-height:1.6;">This writes <code>.jsonl.gz</code> files to <code>./output/</code>. Files are gzipped JSON Lines — Snowflake auto-detects gzip compression during COPY INTO.</p>
+          <p style="font-size:0.8rem;color:#8b949e;margin-bottom:0;line-height:1.6;">This writes uniquely-named <code>.jsonl.gz</code> files to <code>./output/</code>. Files are gzipped JSON Lines — Snowflake auto-detects gzip compression during COPY INTO.</p>
         </div>
 
         <div class="setup-section">
@@ -2663,7 +2680,7 @@ python generate_events.py --files 5 --rows 1000</pre>
 
           <div class="callout" style="margin-bottom:16px;">
             <strong>Environment-specific step</strong>
-            How files reach cloud storage depends on your infrastructure. Below are example CLI commands for common providers. You can also drag-and-drop via the cloud console.
+            How files reach cloud storage depends on your infrastructure. Below are example CLI commands for common providers. You can also drag-and-drop the <code>output/</code> files via the cloud console.
           </div>
 
           <div class="code-block">
@@ -2672,13 +2689,46 @@ python generate_events.py --files 5 --rows 1000</pre>
               <button class="copy-btn" onclick="copyCode(this)">Copy</button>
             </div>
             <pre># AWS S3
-aws s3 cp samples/ s3://&lt;your-bucket&gt;/kafka-demo/ --recursive
+aws s3 cp output/ s3://&lt;your-bucket&gt;/kafka-demo/ --recursive
 
 # Azure Blob Storage
-az storage blob upload-batch -d &lt;container&gt;/kafka-demo -s samples/
+az storage blob upload-batch -d &lt;container&gt;/kafka-demo -s output/
 
 # Google Cloud Storage
-gsutil cp samples/*.jsonl.gz gs://&lt;your-bucket&gt;/kafka-demo/</pre>
+gsutil cp output/*.jsonl.gz gs://&lt;your-bucket&gt;/kafka-demo/</pre>
+          </div>
+        </div>
+
+        <div class="setup-section">
+          <p class="section-title">3. What to Show</p>
+
+          <div class="callout" style="margin-bottom:0;">
+            <strong>Presenter talking points</strong>
+            As files land, narrate the event-driven flow using the <strong>Status Queries</strong> tab:
+            <ul style="margin:10px 0 0 18px;padding:0;font-size:0.82rem;line-height:1.7;">
+              <li>Start with an <strong>empty table</strong> (row count 0) and the pipe <code>RUNNING</code>.</li>
+              <li>Upload files, then re-run <code>SYSTEM$PIPE_STATUS</code> — point out <code>lastReceivedMessageTimestamp</code> and <code>pendingFileCount</code> changing as the S3 event arrives.</li>
+              <li>Re-run the <strong>row count</strong> — it climbs within seconds, no warehouse, no manual COPY.</li>
+              <li>Show <strong>rows per file</strong> (lineage via <code>METADATA$FILENAME</code>) to prove each file loaded once.</li>
+              <li>Emphasize: <strong>serverless &amp; event-driven</strong>, <strong>file-level dedup</strong>, and <strong>seconds latency</strong> — the customer's existing tools just drop files in storage.</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="setup-section">
+          <p class="section-title">4. Reset for Next Run</p>
+
+          <div class="code-block">
+            <div class="cb-header">
+              <span>Snowflake — reset</span>
+              <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+            </div>
+            <pre>TRUNCATE TABLE KAFKA_DEMO.BATCH.CLICKSTREAM;</pre>
+          </div>
+
+          <div class="callout warn" style="margin-bottom:0;">
+            <strong>Delete staged files via the cloud console</strong>
+            Snowflake <code>REMOVE @stage</code> is blocked here — the storage integration is read-only (no <code>s3:DeleteObject</code>). Delete the uploaded files directly in the S3 / ADLS / GCS console. The next run generates new uniquely-named files automatically, so no dedup cleanup is needed.
           </div>
         </div>
 

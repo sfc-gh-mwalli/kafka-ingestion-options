@@ -53,53 +53,66 @@ After creating the pipe, configure your cloud storage event notification to
 target the pipe's `notification_channel` (from `SHOW PIPES`). This is part of
 the prerequisite cloud setup.
 
-### 2. Get sample files
+### 2. Prep — start clean (before each run)
 
-Two options:
+Reset to a clean slate so the row count visibly climbs from zero:
 
-**Option A — use the committed samples (zero setup):**
-The [`samples/`](samples/) folder contains ready-made gzipped JSONL files:
-```
-samples/clickstream_batch_001.jsonl.gz
-samples/clickstream_batch_002.jsonl.gz
-samples/clickstream_batch_003.jsonl.gz
+```sql
+TRUNCATE TABLE KAFKA_DEMO.BATCH.CLICKSTREAM;
+SELECT SYSTEM$PIPE_STATUS('KAFKA_DEMO.BATCH.CLICKSTREAM_PIPE');  -- expect "RUNNING"
+LIST @KAFKA_DEMO.BATCH.CLICKSTREAM_STAGE;                        -- check for leftover files
 ```
 
-**Option B — generate fresh files:**
+> **Dedup note:** `TRUNCATE` clears the table but does *not* reset Snowpipe's
+> file load history (that lives in the pipe). The generator gives every file a
+> unique name each run, so this is never a problem — just always generate fresh
+> files rather than re-uploading old ones.
+
+### 3. Generate sample files
+
 ```bash
 pip install -r requirements.txt
 python generate_events.py --files 5 --rows 1000
-# writes gzipped .jsonl.gz files to ./output/
+# writes uniquely-named .jsonl.gz files to ./output/
 ```
 
-Files are **gzip-compressed JSON Lines** (`.jsonl.gz`). Snowflake's JSON file
-format auto-detects gzip — no configuration needed. Compression is a best
+Filenames include a UTC timestamp and a unique id (e.g.
+`clickstream_20260608T213724Z_5b316fc1.jsonl.gz`), so every run produces new
+names that Snowpipe will always load. Files are **gzip-compressed JSON Lines** —
+Snowflake auto-detects gzip, no configuration needed. Compression is a best
 practice: smaller files mean lower storage and transfer cost.
 
-### 3. Land the files in cloud storage
+### 4. Land the files in cloud storage
 
-Upload the files to your external stage location. **How you do this is
+Upload the `output/` files to your external stage location. **How you do this is
 environment-specific** — use whatever your environment uses. Examples:
 
 ```bash
 # AWS S3
-aws s3 cp samples/ s3://<your-bucket>/kafka-demo/ --recursive
+aws s3 cp output/ s3://<your-bucket>/kafka-demo/ --recursive
 
 # Azure ADLS / Blob
-az storage blob upload-batch -d <container>/kafka-demo -s samples/
+az storage blob upload-batch -d <container>/kafka-demo -s output/
 
 # Google Cloud Storage
-gsutil cp samples/*.jsonl.gz gs://<your-bucket>/kafka-demo/
+gsutil cp output/*.jsonl.gz gs://<your-bucket>/kafka-demo/
 ```
 
 Or simply drag-and-drop the files into the storage location via your cloud
 provider's web console.
 
-### 4. Watch Snowpipe load them
+### 5. Watch Snowpipe load them — what to show
 
 The moment files land, the storage event notification fires and Snowpipe
 loads them (typically within seconds to ~1 minute). Run the queries in
-[`status.sql`](status.sql) to watch progress:
+[`status.sql`](status.sql) to watch progress and narrate the flow:
+
+- Start with an **empty table** (row count 0) and the pipe `RUNNING`.
+- After uploading, re-run `SYSTEM$PIPE_STATUS` — point out
+  `lastReceivedMessageTimestamp` and `pendingFileCount` changing as the event arrives.
+- Re-run the **row count** — it climbs within seconds, no warehouse, no manual COPY.
+- Show **rows per file** (lineage via `METADATA$FILENAME`) — each file loaded once.
+- Emphasize: **serverless & event-driven**, **file-level dedup**, **seconds latency**.
 
 | Query | Shows |
 |-------|-------|
@@ -109,6 +122,17 @@ loads them (typically within seconds to ~1 minute). Run the queries in
 | #4 | Rows per source file (file-level lineage) |
 | #7 | Snowpipe load history (per-file COPY results) |
 
+### 6. Reset for next run
+
+```sql
+TRUNCATE TABLE KAFKA_DEMO.BATCH.CLICKSTREAM;
+```
+
+Then delete the uploaded files **via the cloud console** (S3 / ADLS / GCS).
+Snowflake `REMOVE @stage` is blocked here — the storage integration is
+read-only (no `s3:DeleteObject`). The next run generates new uniquely-named
+files automatically, so there is no dedup cleanup to worry about.
+
 ---
 
 ## Files
@@ -116,9 +140,8 @@ loads them (typically within seconds to ~1 minute). Run the queries in
 | File | Purpose |
 |------|---------|
 | `setup/snowflake_setup.sql` | Target table + AUTO_INGEST pipe (stage = prereq) |
-| `generate_events.py` | Generate gzipped JSONL batch files |
+| `generate_events.py` | Generate uniquely-named gzipped JSONL batch files |
 | `requirements.txt` | `faker` (only needed for generate_events.py) |
-| `samples/*.jsonl.gz` | Ready-made sample files for zero-setup demos |
 | `status.sql` | Monitoring / verification queries |
 
 ---

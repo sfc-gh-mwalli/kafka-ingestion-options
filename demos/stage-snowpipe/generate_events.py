@@ -20,7 +20,6 @@ import argparse
 import gzip
 import json
 import os
-import time
 import uuid
 from datetime import datetime, timezone
 
@@ -77,11 +76,17 @@ def main() -> None:
     os.makedirs(args.output_dir, exist_ok=True)
     compress = not args.uncompressed
     ext = "jsonl.gz" if compress else "jsonl"
-    ts = int(time.time())
+    ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 
     offset = 0
     for n in range(1, args.files + 1):
-        fname = f"clickstream_{ts}_{n:03d}.{ext}"
+        # Each filename includes a UTC timestamp and a unique uuid fragment, so
+        # filenames never collide within or across runs. This matters because
+        # Snowpipe deduplicates on filename (load history lives in the pipe and
+        # is NOT reset by TRUNCATE TABLE) -- unique names guarantee every file
+        # is always loaded, with no dedup surprises on repeat demo runs.
+        unique = uuid.uuid4().hex[:8]
+        fname = f"clickstream_{ts}_{unique}.{ext}"
         path = os.path.join(args.output_dir, fname)
         write_batch(path, args.rows, offset, compress)
         offset += args.rows
@@ -89,7 +94,8 @@ def main() -> None:
         print(f"Wrote {args.rows} events -> {path} ({size:,} bytes)")
 
     print(f"\nDone. {args.files} file(s) in '{args.output_dir}/'.")
-    print("Upload them to your external stage location; Snowpipe AUTO_INGEST will load them.")
+    print("Filenames are unique each run, so Snowpipe AUTO_INGEST always loads them.")
+    print("Upload them to your external stage location to trigger ingestion.")
 
 
 if __name__ == "__main__":

@@ -8,6 +8,17 @@ USE DATABASE KAFKA_DEMO;
 USE SCHEMA BATCH;
 
 
+-- ── 0. Prep / Reset between runs ──────────────────────────────────
+-- Run before a demo (clean slate) and after (reset). The row count then
+-- visibly climbs from zero as files load.
+--   TRUNCATE clears the table but does NOT reset Snowpipe's file load history
+--   (that lives in the pipe). generate_events.py emits uniquely-named files
+--   each run, so re-loads always happen -- just generate fresh files.
+--   Staged files must be deleted via the cloud console: REMOVE @stage is
+--   blocked because the storage integration is read-only (no s3:DeleteObject).
+TRUNCATE TABLE CLICKSTREAM;
+
+
 -- ── 1. Files currently in the stage ───────────────────────────────
 -- Shows files that have landed in the external stage location.
 LIST @CLICKSTREAM_STAGE;
