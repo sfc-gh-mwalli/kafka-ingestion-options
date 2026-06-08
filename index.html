@@ -2563,6 +2563,14 @@ WHERE event_ts &gt;= DATEADD('minute', -30, CURRENT_TIMESTAMP());</pre>
     <div id="subtab-st-setup" class="subtab-content">
       <div style="max-width:960px;margin:0 auto;">
 
+        <div class="subsubtab-bar">
+          <button class="subsubtab-btn active" onclick="switchSubSubTab('stset', 'prereq', this)">Prerequisites</button>
+          <button class="subsubtab-btn" onclick="switchSubSubTab('stset', 'sf', this)">Snowflake Setup</button>
+          <button class="subsubtab-btn" onclick="switchSubSubTab('stset', 'run', this)">Run the Demo</button>
+          <button class="subsubtab-btn" onclick="switchSubSubTab('stset', 'status', this)">Status Queries</button>
+        </div>
+
+        <div id="subsubtab-stset-prereq" class="subsubtab-content active">
         <div class="setup-section">
           <p class="section-title">Prerequisite</p>
 
@@ -2576,8 +2584,11 @@ WHERE event_ts &gt;= DATEADD('minute', -30, CURRENT_TIMESTAMP());</pre>
           </div>
         </div>
 
+        </div><!-- end stset-prereq -->
+
+        <div id="subsubtab-stset-sf" class="subsubtab-content">
         <div class="setup-section">
-          <p class="section-title">1. Create Snowflake Objects</p>
+          <p class="section-title">Create Snowflake Objects</p>
 
           <div class="code-block">
             <div class="cb-header">
@@ -2622,8 +2633,11 @@ FILE_FORMAT = (TYPE = 'JSON');</pre>
           </div>
         </div>
 
+        </div><!-- end stset-sf -->
+
+        <div id="subsubtab-stset-run" class="subsubtab-content">
         <div class="setup-section">
-          <p class="section-title">2. Get Sample Files</p>
+          <p class="section-title">1. Get Sample Files</p>
 
           <p style="font-size:0.85rem;color:#8b949e;margin-bottom:16px;line-height:1.6;">Two options for obtaining sample data files:</p>
 
@@ -2645,7 +2659,7 @@ python generate_events.py --files 5 --rows 1000</pre>
         </div>
 
         <div class="setup-section">
-          <p class="section-title">3. Land Files in Cloud Storage</p>
+          <p class="section-title">2. Land Files in Cloud Storage</p>
 
           <div class="callout" style="margin-bottom:16px;">
             <strong>Environment-specific step</strong>
@@ -2668,8 +2682,11 @@ gsutil cp samples/*.jsonl.gz gs://&lt;your-bucket&gt;/kafka-demo/</pre>
           </div>
         </div>
 
+        </div><!-- end stset-run -->
+
+        <div id="subsubtab-stset-status" class="subsubtab-content">
         <div class="setup-section">
-          <p class="section-title">4. Watch Snowpipe Load</p>
+          <p class="section-title">Watch Snowpipe Load</p>
 
           <p style="font-size:0.85rem;color:#8b949e;margin-bottom:16px;line-height:1.6;">Once files land in the stage and the event notification fires, Snowpipe will automatically load them. Use these queries to monitor progress:</p>
 
@@ -2693,6 +2710,7 @@ GROUP BY ingest_file
 ORDER BY ingest_file;</pre>
           </div>
         </div>
+        </div><!-- end stset-status -->
 
       </div>
     </div><!-- end subtab-st-setup -->
