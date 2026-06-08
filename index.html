@@ -1,0 +1,2704 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Snowpipe Streaming — Kafka Demo Architecture</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #0d1117;
+      color: #e6edf3;
+      min-height: 100vh;
+      padding: 48px 24px;
+    }
+
+    h1 {
+      text-align: center;
+      font-size: 1.75rem;
+      font-weight: 600;
+      margin-bottom: 8px;
+      color: #fff;
+    }
+
+    .subtitle {
+      text-align: center;
+      color: #8b949e;
+      font-size: 0.95rem;
+      margin-bottom: 40px;
+    }
+
+    /* ── Top-level tabs ── */
+    .tab-bar {
+      display: flex;
+      justify-content: center;
+      gap: 4px;
+      margin-bottom: 48px;
+      border-bottom: 1px solid #30363d;
+      padding-bottom: 0;
+    }
+
+    .tab-btn {
+      background: none;
+      border: none;
+      color: #8b949e;
+      font-size: 0.95rem;
+      font-weight: 500;
+      padding: 10px 28px;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -1px;
+      transition: color 0.15s, border-color 0.15s;
+    }
+
+    .tab-btn:hover { color: #e6edf3; }
+    .tab-btn.active { color: #58a6ff; border-bottom-color: #58a6ff; }
+
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+
+    /* ── Sub-tabs (inside an option tab) ── */
+    .subtab-bar {
+      display: flex;
+      justify-content: center;
+      gap: 4px;
+      margin-bottom: 40px;
+      border-bottom: 1px solid #21262d;
+      padding-bottom: 0;
+    }
+
+    .subtab-btn {
+      background: none;
+      border: none;
+      color: #8b949e;
+      font-size: 0.85rem;
+      font-weight: 500;
+      padding: 8px 22px;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -1px;
+      transition: color 0.15s, border-color 0.15s;
+    }
+
+    .subtab-btn:hover { color: #e6edf3; }
+    .subtab-btn.active { color: #29b5e8; border-bottom-color: #29b5e8; }
+
+    .subtab-content { display: none; }
+    .subtab-content.active { display: block; }
+
+    /* ── Flow diagram ── */
+    .flow {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0;
+      flex-wrap: nowrap;
+      margin-bottom: 64px;
+      overflow-x: auto;
+      padding-bottom: 8px;
+    }
+
+    .box {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+      min-width: 130px;
+    }
+
+    .icon-wrap {
+      width: 72px;
+      height: 72px;
+      border-radius: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 2rem;
+    }
+
+    .icon-wrap.producer  { background: #1c2e1c; border: 1.5px solid #3fb950; }
+    .icon-wrap.kafka     { background: #1e1e2e; border: 1.5px solid #7c6af7; }
+    .icon-wrap.consumer  { background: #1a2840; border: 1.5px solid #58a6ff; }
+    .icon-wrap.snowflake { background: #1a2535; border: 1.5px solid #29b5e8; }
+    .icon-wrap.table     { background: #1a2535; border: 1.5px solid #29b5e8; }
+
+    .box-label {
+      font-size: 0.8rem;
+      font-weight: 600;
+      text-align: center;
+      color: #e6edf3;
+    }
+
+    .box-sub {
+      font-size: 0.7rem;
+      color: #8b949e;
+      text-align: center;
+      line-height: 1.4;
+    }
+
+    .arrow {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      padding: 0 8px;
+      min-width: 90px;
+    }
+
+    .arrow-line {
+      width: 100%;
+      height: 2px;
+      position: relative;
+    }
+
+    .arrow-line::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 12px;
+      height: 2px;
+    }
+
+    .arrow-line::after {
+      content: '▶';
+      position: absolute;
+      right: 0;
+      top: -7px;
+      font-size: 0.8rem;
+    }
+
+    .arrow-line.green::before  { background: #3fb950; }
+    .arrow-line.green::after   { color: #3fb950; }
+    .arrow-line.purple::before { background: #7c6af7; }
+    .arrow-line.purple::after  { color: #7c6af7; }
+    .arrow-line.blue::before   { background: #58a6ff; }
+    .arrow-line.blue::after    { color: #58a6ff; }
+    .arrow-line.cyan::before   { background: #29b5e8; }
+    .arrow-line.cyan::after    { color: #29b5e8; }
+
+    .arrow-label {
+      font-size: 0.65rem;
+      color: #8b949e;
+      text-align: center;
+      white-space: nowrap;
+    }
+
+    /* ── Detail cards ── */
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 20px;
+      max-width: 1100px;
+      margin: 0 auto 64px;
+    }
+
+    .card {
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 12px;
+      padding: 24px;
+    }
+
+    .card-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+
+    .card-icon {
+      width: 40px;
+      height: 40px;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.2rem;
+      flex-shrink: 0;
+    }
+
+    .card-icon.green  { background: #1c2e1c; }
+    .card-icon.purple { background: #1e1e2e; }
+    .card-icon.blue   { background: #1a2840; }
+    .card-icon.cyan   { background: #1a2535; }
+
+    .card h3 {
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: #e6edf3;
+    }
+
+    .card p {
+      font-size: 0.82rem;
+      color: #8b949e;
+      line-height: 1.6;
+      margin-bottom: 12px;
+    }
+
+    .tag-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .tag {
+      font-size: 0.7rem;
+      padding: 3px 8px;
+      border-radius: 20px;
+      font-family: "SF Mono", "Fira Code", monospace;
+    }
+
+    .tag.green  { background: #1c2e1c; color: #3fb950; border: 1px solid #3fb950; }
+    .tag.purple { background: #1e1e2e; color: #7c6af7; border: 1px solid #7c6af7; }
+    .tag.blue   { background: #1a2840; color: #58a6ff; border: 1px solid #58a6ff; }
+    .tag.cyan   { background: #1a2535; color: #29b5e8; border: 1px solid #29b5e8; }
+
+    /* ── Data flow steps ── */
+    .steps-title {
+      text-align: center;
+      font-size: 1.1rem;
+      font-weight: 600;
+      color: #e6edf3;
+      margin-bottom: 24px;
+    }
+
+    .steps {
+      max-width: 720px;
+      margin: 0 auto 64px;
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+    }
+
+    .step {
+      display: flex;
+      gap: 20px;
+      position: relative;
+    }
+
+    .step:not(:last-child) .step-line {
+      position: absolute;
+      left: 19px;
+      top: 40px;
+      bottom: -1px;
+      width: 2px;
+      background: #30363d;
+    }
+
+    .step-num {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.85rem;
+      font-weight: 700;
+      flex-shrink: 0;
+      position: relative;
+      z-index: 1;
+    }
+
+    .step-num.s1 { background: #1c2e1c; color: #3fb950; border: 2px solid #3fb950; }
+    .step-num.s2 { background: #1c2e1c; color: #3fb950; border: 2px solid #3fb950; }
+    .step-num.s3 { background: #1e1e2e; color: #7c6af7; border: 2px solid #7c6af7; }
+    .step-num.s4 { background: #1a2840; color: #58a6ff; border: 2px solid #58a6ff; }
+    .step-num.s5 { background: #1a2840; color: #58a6ff; border: 2px solid #58a6ff; }
+    .step-num.s6 { background: #1a2535; color: #29b5e8; border: 2px solid #29b5e8; }
+    .step-num.s7 { background: #1a2535; color: #29b5e8; border: 2px solid #29b5e8; }
+
+    .step-body {
+      padding-bottom: 28px;
+      flex: 1;
+    }
+
+    .step-body h4 {
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: #e6edf3;
+      margin-bottom: 4px;
+      padding-top: 8px;
+    }
+
+    .step-body p {
+      font-size: 0.8rem;
+      color: #8b949e;
+      line-height: 1.5;
+    }
+
+    code {
+      font-family: "SF Mono", "Fira Code", monospace;
+      font-size: 0.75rem;
+      background: #21262d;
+      padding: 2px 6px;
+      border-radius: 4px;
+      color: #e6edf3;
+    }
+
+    /* ── Guarantee banner ── */
+    .guarantee {
+      max-width: 720px;
+      margin: 0 auto;
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 12px;
+      padding: 24px 28px;
+    }
+
+    .guarantee h3 {
+      font-size: 0.95rem;
+      font-weight: 600;
+      margin-bottom: 16px;
+      color: #e6edf3;
+    }
+
+    .guarantee-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    .guarantee-item {
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+    }
+
+    .g-icon { font-size: 1rem; margin-top: 1px; }
+
+    .guarantee-item p {
+      font-size: 0.8rem;
+      color: #8b949e;
+      line-height: 1.5;
+    }
+
+    .guarantee-item strong {
+      color: #e6edf3;
+      display: block;
+      margin-bottom: 2px;
+      font-size: 0.82rem;
+    }
+
+    /* ── Options tab ── */
+    .options-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 20px;
+      max-width: 1100px;
+      margin: 0 auto 48px;
+    }
+
+    .opt-card {
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 12px;
+      padding: 24px;
+      position: relative;
+    }
+
+    .opt-card.highlight {
+      border-color: #29b5e8;
+      box-shadow: 0 0 0 1px #29b5e840;
+    }
+
+    .opt-badge {
+      position: absolute;
+      top: -11px;
+      left: 20px;
+      font-size: 0.65rem;
+      font-weight: 700;
+      padding: 2px 10px;
+      border-radius: 20px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      background: #29b5e8;
+      color: #0d1117;
+    }
+
+    .opt-card h3 {
+      font-size: 1rem;
+      font-weight: 600;
+      color: #e6edf3;
+      margin-bottom: 4px;
+    }
+
+    .opt-card .opt-sub {
+      font-size: 0.75rem;
+      color: #8b949e;
+      margin-bottom: 14px;
+    }
+
+    .opt-card p {
+      font-size: 0.8rem;
+      color: #8b949e;
+      line-height: 1.6;
+      margin-bottom: 12px;
+    }
+
+    .opt-pills {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-bottom: 14px;
+    }
+
+    .pill {
+      font-size: 0.68rem;
+      padding: 3px 9px;
+      border-radius: 20px;
+      font-family: "SF Mono", "Fira Code", monospace;
+    }
+
+    .pill.teal   { background: #1a2535; color: #29b5e8; border: 1px solid #29b5e8; }
+    .pill.purple { background: #1e1e2e; color: #7c6af7; border: 1px solid #7c6af7; }
+    .pill.green  { background: #1c2e1c; color: #3fb950; border: 1px solid #3fb950; }
+    .pill.yellow { background: #2d2208; color: #e3b341; border: 1px solid #e3b341; }
+    .pill.red    { background: #2d1215; color: #ff7b72; border: 1px solid #ff7b72; }
+
+    .opt-req {
+      font-size: 0.75rem;
+      color: #8b949e;
+      padding-top: 12px;
+      border-top: 1px solid #30363d;
+    }
+
+    .opt-req strong { color: #e6edf3; }
+
+    .opt-link {
+      display: inline-block;
+      margin-top: 10px;
+      font-size: 0.75rem;
+      color: #58a6ff;
+      text-decoration: none;
+    }
+
+    .opt-link:hover { text-decoration: underline; }
+
+    /* comparison table */
+    .cmp-wrap {
+      max-width: 1100px;
+      margin: 0 auto;
+      overflow-x: auto;
+    }
+
+    .cmp-title {
+      font-size: 1.1rem;
+      font-weight: 600;
+      color: #e6edf3;
+      margin-bottom: 16px;
+    }
+
+    .cmp-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.8rem;
+    }
+
+    .cmp-table th {
+      background: #21262d;
+      color: #e6edf3;
+      font-weight: 600;
+      padding: 10px 14px;
+      text-align: left;
+      border: 1px solid #30363d;
+      white-space: nowrap;
+    }
+
+    .cmp-table th.hl { color: #29b5e8; border-top: 2px solid #29b5e8; }
+
+    .cmp-table td {
+      padding: 9px 14px;
+      border: 1px solid #30363d;
+      color: #8b949e;
+      vertical-align: top;
+      line-height: 1.5;
+    }
+
+    .cmp-table tr:nth-child(even) td { background: #161b22; }
+
+    .cmp-table td.factor {
+      color: #e6edf3;
+      font-weight: 500;
+      background: #161b22;
+      white-space: nowrap;
+    }
+
+    .cmp-table td.hl { color: #29b5e8; }
+
+    .yes  { color: #3fb950; font-weight: 600; }
+    .no   { color: #ff7b72; }
+    .dep  { color: #e3b341; }
+
+
+    .deep-dive {
+      max-width: 960px;
+      margin: 0 auto;
+    }
+
+    .section-title {
+      font-size: 1.1rem;
+      font-weight: 600;
+      color: #e6edf3;
+      margin-bottom: 20px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid #30363d;
+    }
+
+    .section { margin-bottom: 48px; }
+
+    /* code block */
+    .code-block {
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 10px;
+      overflow: hidden;
+      margin-bottom: 16px;
+    }
+
+    .code-block-header {
+      background: #21262d;
+      padding: 8px 16px;
+      font-size: 0.72rem;
+      color: #8b949e;
+      font-family: "SF Mono", "Fira Code", monospace;
+      border-bottom: 1px solid #30363d;
+    }
+
+    .code-block pre {
+      padding: 16px;
+      overflow-x: auto;
+      font-size: 0.78rem;
+      line-height: 1.65;
+      font-family: "SF Mono", "Fira Code", monospace;
+      color: #e6edf3;
+    }
+
+    .code-block .comment { color: #8b949e; }
+    .code-block .kw      { color: #ff7b72; }
+    .code-block .fn      { color: #d2a8ff; }
+    .code-block .str     { color: #a5d6ff; }
+    .code-block .num     { color: #79c0ff; }
+    .code-block .var     { color: #ffa657; }
+
+    /* consideration cards */
+    .consider-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+
+    .consider-card {
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 10px;
+      padding: 20px;
+    }
+
+    .consider-card .c-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+
+    .c-badge {
+      font-size: 0.65rem;
+      font-weight: 700;
+      padding: 2px 8px;
+      border-radius: 20px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .c-badge.blue   { background: #1a2840; color: #58a6ff; border: 1px solid #58a6ff; }
+    .c-badge.yellow { background: #2d2208; color: #e3b341; border: 1px solid #e3b341; }
+    .c-badge.red    { background: #2d1215; color: #ff7b72; border: 1px solid #ff7b72; }
+    .c-badge.green  { background: #1c2e1c; color: #3fb950; border: 1px solid #3fb950; }
+    .c-badge.cyan   { background: #1a2535; color: #29b5e8; border: 1px solid #29b5e8; }
+
+    .consider-card h4 {
+      font-size: 0.88rem;
+      font-weight: 600;
+      color: #e6edf3;
+    }
+
+    .consider-card p {
+      font-size: 0.8rem;
+      color: #8b949e;
+      line-height: 1.6;
+    }
+
+    /* prod checklist */
+    .checklist {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .checklist li {
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+      font-size: 0.82rem;
+      color: #8b949e;
+      line-height: 1.5;
+    }
+
+    .checklist li .ci {
+      font-size: 1rem;
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+
+    .checklist li strong {
+      color: #e6edf3;
+      display: block;
+    }
+
+    .two-col {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+
+    .info-box {
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 10px;
+      padding: 20px;
+    }
+
+    .info-box h4 {
+      font-size: 0.88rem;
+      font-weight: 600;
+      color: #e6edf3;
+      margin-bottom: 12px;
+    }
+
+    @media (max-width: 640px) {
+      .two-col { grid-template-columns: 1fr; }
+      .guarantee-grid { grid-template-columns: 1fr; }
+    }
+
+    /* ── Demo Setup tab ── */
+    .cb-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: #21262d;
+      padding: 8px 16px;
+      font-size: 0.72rem;
+      color: #8b949e;
+      font-family: "SF Mono", "Fira Code", monospace;
+      border-bottom: 1px solid #30363d;
+    }
+
+    .copy-btn {
+      background: #161b22;
+      border: 1px solid #30363d;
+      color: #8b949e;
+      font-size: 0.65rem;
+      padding: 3px 10px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-family: -apple-system, sans-serif;
+      transition: background 0.15s, color 0.15s;
+      flex-shrink: 0;
+    }
+
+    .copy-btn:hover { background: #30363d; color: #e6edf3; }
+    .copy-btn.copied { color: #3fb950; border-color: #3fb950; }
+
+    .prereq-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 16px;
+      max-width: 960px;
+      margin: 0 auto 32px;
+    }
+
+    .prereq-card {
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 10px;
+      padding: 20px;
+    }
+
+    .prereq-card h4 {
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: #e6edf3;
+      margin-bottom: 10px;
+    }
+
+    .prereq-card ul {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .prereq-card li {
+      font-size: 0.8rem;
+      color: #8b949e;
+      line-height: 1.5;
+      display: flex;
+      gap: 8px;
+      align-items: flex-start;
+    }
+
+    .prereq-card li::before { content: "›"; color: #58a6ff; flex-shrink: 0; font-weight: 700; }
+
+    .callout {
+      background: #1a2840;
+      border: 1px solid #58a6ff;
+      border-left-width: 3px;
+      border-radius: 8px;
+      padding: 12px 16px;
+      margin-bottom: 20px;
+      font-size: 0.8rem;
+      color: #8b949e;
+      line-height: 1.6;
+      max-width: 960px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+
+    .callout strong { color: #58a6ff; display: block; margin-bottom: 2px; }
+    .callout.warn { background: #2d2208; border-color: #e3b341; }
+    .callout.warn strong { color: #e3b341; }
+    .callout.ok { background: #1c2e1c; border-color: #3fb950; }
+    .callout.ok strong { color: #3fb950; }
+
+    .dir-tree {
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 10px;
+      padding: 20px;
+      max-width: 500px;
+      margin: 0 auto 32px;
+      font-family: "SF Mono", "Fira Code", monospace;
+      font-size: 0.78rem;
+      line-height: 1.9;
+    }
+
+    .dir-tree .dir  { color: #58a6ff; font-weight: 600; }
+    .dir-tree .file { color: #e6edf3; }
+    .dir-tree .note { color: #8b949e; font-style: italic; }
+
+    .setup-section { margin-bottom: 40px; }
+  </style>
+</head>
+<body>
+
+  <!-- ── Top-level tab bar ── -->
+  <div class="tab-bar">
+    <button class="tab-btn active" onclick="switchTab('options', this)">Ingestion Options</button>
+    <button class="tab-btn" onclick="switchTab('snowpipe', this)">Snowpipe Streaming SDK</button>
+    <button class="tab-btn" onclick="switchTab('stage', this)">Stage + Snowpipe</button>
+  </div>
+
+  <!-- ══════════════════════════════════════════
+       TAB 1 — KAFKA → SNOWFLAKE OPTIONS
+  ══════════════════════════════════════════ -->
+  <div id="tab-options" class="tab-content active">
+    <div style="text-align:center;margin-bottom:40px;">
+      <h2 style="font-size:1.9rem;font-weight:700;color:#e6edf3;margin-bottom:8px;">Kafka → Snowflake: Ingestion Options</h2>
+      <p style="font-size:1rem;color:#8b949e;">Choose the right approach for your team and infrastructure</p>
+    </div>
+
+    <div class="options-grid">
+
+      <!-- Option 1: Kafka Connector -->
+      <div class="opt-card">
+        <h3>Snowflake Connector for Kafka (v4)</h3>
+        <div class="opt-sub">Recommended for teams with an existing Kafka Connect cluster</div>
+        <p>Native Kafka Connect sink connector using Snowpipe Streaming (high-performance architecture). Handles offset management, schema evolution, and exactly-once delivery automatically.</p>
+        <div class="opt-pills">
+          <span class="pill teal">Sub-second latency</span>
+          <span class="pill green">Exactly-once</span>
+          <span class="pill green">Auto schema evolution</span>
+          <span class="pill teal">Iceberg support</span>
+        </div>
+        <div class="opt-req">
+          <strong>Requires:</strong> A Kafka Connect cluster you deploy and manage<br>
+          <strong>Managed by Snowflake:</strong> No
+        </div>
+        <a class="opt-link" href="https://docs.snowflake.com/en/user-guide/kafka-connector" target="_blank">↗ Snowflake Connector for Kafka docs</a>
+      </div>
+
+      <!-- Option 2: Openflow -->
+      <div class="opt-card">
+        <h3>Openflow (Snowflake-Managed)</h3>
+        <div class="opt-sub">Lowest operational overhead — no Kafka Connect needed</div>
+        <p>Snowflake's fully managed connector platform (NiFi-based) with a native Kafka source connector. Snowflake handles the connector lifecycle, scaling, and monitoring. You just configure and point it at your broker.</p>
+        <div class="opt-pills">
+          <span class="pill teal">Sub-second latency</span>
+          <span class="pill green">Exactly-once</span>
+          <span class="pill green">Auto schema evolution</span>
+          <span class="pill purple">SASL / mTLS / MSK IAM</span>
+          <span class="pill purple">JSON / Avro / Protobuf</span>
+        </div>
+        <div class="opt-req">
+          <strong>Requires:</strong> Kafka cluster must be network-reachable from Snowflake<br>
+          <strong>Managed by Snowflake:</strong> Yes
+        </div>
+        <a class="opt-link" href="https://docs.snowflake.com/en/user-guide/data-integration/openflow/connectors/kafka/about" target="_blank">↗ Openflow Connector for Kafka docs</a>
+      </div>
+
+      <!-- Option 3: SDK -->
+      <div class="opt-card">
+        <h3>Snowpipe Streaming SDK (Direct API)</h3>
+        <div class="opt-sub">Full control — Java, Python, or Node.js consumer app</div>
+        <p>Use the Snowpipe Streaming Python SDK directly in your own Kafka consumer. No Kafka Connect dependency. You build the consumer, control batching logic, handle errors, and manage offset commits.</p>
+        <div class="opt-pills">
+          <span class="pill teal">Sub-second latency</span>
+          <span class="pill teal">Up to 10 GB/s per table</span>
+          <span class="pill green">Exactly-once via offset_token</span>
+          <span class="pill yellow">Manual schema management</span>
+          <span class="pill green">PAT or key-pair auth</span>
+        </div>
+        <div class="opt-req">
+          <strong>Requires:</strong> Building and maintaining a custom consumer application<br>
+          <strong>Managed by Snowflake:</strong> No (ingestion layer only)
+        </div>
+        <a class="opt-link" href="https://docs.snowflake.com/en/user-guide/snowpipe-streaming/data-load-snowpipe-streaming-overview" target="_blank">↗ Snowpipe Streaming Overview</a>
+      </div>
+
+      <!-- Option 4: Stage + Snowpipe -->
+      <div class="opt-card">
+        <h3>Stage + Snowpipe (Batch)</h3>
+        <div class="opt-sub">Simple if you already land files in object storage</div>
+        <p>Write Kafka messages as files to S3/GCS/Azure Blob via a sink process (Kafka Connect S3 Sink, MSK Firehose, or custom), then auto-ingest with Snowpipe. Higher latency but leverages existing file-based infrastructure.</p>
+        <div class="opt-pills">
+          <span class="pill yellow">Minutes latency</span>
+          <span class="pill green">Exactly-once (file dedup)</span>
+          <span class="pill yellow">Manual schema management</span>
+          <span class="pill teal">COPY INTO transforms</span>
+        </div>
+        <div class="opt-req">
+          <strong>Requires:</strong> A mechanism to write files from Kafka to cloud storage<br>
+          <strong>Managed by Snowflake:</strong> Partially (Snowpipe side only)
+        </div>
+        <a class="opt-link" href="https://docs.snowflake.com/en/user-guide/data-load-snowpipe-auto" target="_blank">↗ Snowpipe Auto-Ingest docs</a>
+      </div>
+
+    </div>
+
+    <!-- Comparison table -->
+    <div class="cmp-wrap">
+      <p class="cmp-title">Side-by-side comparison</p>
+      <table class="cmp-table">
+        <thead>
+          <tr>
+            <th>Factor</th>
+            <th>Kafka Connector v4</th>
+            <th>Openflow</th>
+            <th>Snowpipe Streaming SDK</th>
+            <th>Stage + Snowpipe (Batch)</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="factor">Requires Kafka Connect</td>
+            <td><span class="dep">Yes</span></td>
+            <td><span class="yes">No</span></td>
+            <td><span class="yes">No</span></td>
+            <td><span class="dep">Depends on sink</span></td>
+          </tr>
+          <tr>
+            <td class="factor">Managed by Snowflake</td>
+            <td><span class="dep">No</span></td>
+            <td><span class="yes">Yes</span></td>
+            <td><span class="dep">No</span></td>
+            <td><span class="dep">Partially</span></td>
+          </tr>
+          <tr>
+            <td class="factor">Latency</td>
+            <td>Sub-second</td>
+            <td>Sub-second</td>
+            <td>Sub-second</td>
+            <td><span class="dep">Minutes</span></td>
+          </tr>
+          <tr>
+            <td class="factor">Exactly-once semantics</td>
+            <td><span class="yes">Yes</span></td>
+            <td><span class="yes">Yes</span></td>
+            <td><span class="yes">Yes (via offset_token)</span></td>
+            <td><span class="yes">Exactly-once (file dedup)</span></td>
+          </tr>
+          <tr>
+            <td class="factor">Schema evolution</td>
+            <td><span class="yes">Yes</span></td>
+            <td><span class="yes">Yes</span></td>
+            <td><span class="dep">Manual</span></td>
+            <td><span class="dep">Manual</span></td>
+          </tr>
+          <tr>
+            <td class="factor">Transformations</td>
+            <td>User-defined pipes</td>
+            <td>NiFi processors / pipes</td>
+            <td>In your code</td>
+            <td>COPY INTO transforms</td>
+          </tr>
+          <tr>
+            <td class="factor">Operational burden</td>
+            <td>You manage Connect cluster</td>
+            <td><span class="yes">Snowflake manages</span></td>
+            <td>You build &amp; manage consumer app</td>
+            <td>You manage consumer + storage</td>
+          </tr>
+          <tr>
+            <td class="factor">Complexity</td>
+            <td>Medium</td>
+            <td><span class="yes">Low</span></td>
+            <td><span class="dep">High</span></td>
+            <td>Medium-High</td>
+          </tr>
+          <tr>
+            <td class="factor">Best for</td>
+            <td>Teams with existing Kafka Connect</td>
+            <td>Teams wanting minimal ops</td>
+            <td>Custom apps needing full control</td>
+            <td>Teams already landing files in storage</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+  </div><!-- end tab-options -->
+
+
+  <!-- ══════════════════════════════════════════
+       TAB 2 — SNOWPIPE STREAMING (with sub-tabs)
+  ══════════════════════════════════════════ -->
+  <div id="tab-snowpipe" class="tab-content">
+
+    <!-- Snowpipe Streaming header -->
+    <div style="text-align:center;margin-bottom:32px;">
+      <h2 style="font-size:1.9rem;font-weight:700;color:#e6edf3;margin-bottom:8px;">Snowpipe Streaming — Kafka Demo</h2>
+      <p style="font-size:1rem;color:#8b949e;margin-bottom:16px;">Real-time data pipeline from a local Kafka broker to Snowflake</p>
+      <span style="display:inline-flex;align-items:center;gap:8px;background:#1a2535;border:1px solid #29b5e8;border-radius:20px;padding:6px 16px;font-size:0.78rem;color:#29b5e8;font-weight:500;">
+        ❄️ Snowpipe Streaming &nbsp;·&nbsp; High-Performance Architecture &nbsp;·&nbsp; Python SDK (snowpipe-streaming&nbsp;≥&nbsp;1.4.0)
+      </span>
+    </div>
+
+    <!-- Sub-tab bar -->
+    <div class="subtab-bar">
+      <button class="subtab-btn active" onclick="switchSubTab('sp', 'arch', this)">Architecture</button>
+      <button class="subtab-btn" onclick="switchSubTab('sp', 'consumer', this)">consumer.py Deep Dive</button>
+      <button class="subtab-btn" onclick="switchSubTab('sp', 'setup', this)">Setup Guide</button>
+    </div>
+
+    <!-- ── Sub-tab: Architecture ── -->
+    <div id="subtab-sp-arch" class="subtab-content active">
+
+    <!-- Flow diagram -->
+    <div class="flow">
+
+      <div class="box">
+        <div class="icon-wrap producer">🏭</div>
+        <div class="box-label">producer.py</div>
+        <div class="box-sub">Faker synthetic<br>events ~10/sec</div>
+      </div>
+
+      <div class="arrow">
+        <div class="arrow-line green"></div>
+        <div class="arrow-label">JSON messages<br>keyed by user_id</div>
+      </div>
+
+      <div class="box">
+        <div class="icon-wrap kafka">📨</div>
+        <div class="box-label">Apache Kafka</div>
+        <div class="box-sub">topic: events<br>3 partitions<br>Docker / KRaft</div>
+      </div>
+
+      <div class="arrow">
+        <div class="arrow-line purple"></div>
+        <div class="arrow-label">poll() loop<br>manual offsets</div>
+      </div>
+
+      <div class="box">
+        <div class="icon-wrap consumer">⚙️</div>
+        <div class="box-label">consumer.py</div>
+        <div class="box-sub">Kafka consumer<br>group + Snowpipe<br>Streaming SDK</div>
+      </div>
+
+      <div class="arrow">
+        <div class="arrow-line blue"></div>
+        <div class="arrow-label">HTTPS + PAT<br>append_row()</div>
+      </div>
+
+      <div class="box">
+        <div class="icon-wrap snowflake">❄️</div>
+        <div class="box-label">Snowpipe<br>Streaming</div>
+        <div class="box-sub">High-Perf API<br>CLICKSTREAM-STREAMING<br>3 channels</div>
+      </div>
+
+      <div class="arrow">
+        <div class="arrow-line cyan"></div>
+        <div class="arrow-label">serverless<br>micro-batch</div>
+      </div>
+
+      <div class="box">
+        <div class="icon-wrap table">🗄️</div>
+        <div class="box-label">CLICKSTREAM</div>
+        <div class="box-sub">KAFKA_DEMO<br>.STREAMING<br>.CLICKSTREAM</div>
+      </div>
+
+    </div>
+
+    <!-- Detail cards -->
+    <div class="cards">
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-icon green">🏭</div>
+          <h3>producer.py</h3>
+        </div>
+        <p>Generates synthetic clickstream events using the Faker library and publishes them to the Kafka <code>events</code> topic. The Kafka message key is the <code>user_id</code>, which determines partition assignment via consistent hashing.</p>
+        <div class="tag-list">
+          <span class="tag green">confluent-kafka</span>
+          <span class="tag green">faker</span>
+          <span class="tag green">~10 events/sec</span>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-icon purple">📨</div>
+          <h3>Apache Kafka (Docker)</h3>
+        </div>
+        <p>Single-node broker running in KRaft mode (no Zookeeper) via Docker. The <code>events</code> topic has 3 partitions for parallelism. Each partition maps to one Snowpipe Streaming channel in the consumer.</p>
+        <div class="tag-list">
+          <span class="tag purple">apache/kafka:3.7.0</span>
+          <span class="tag purple">KRaft mode</span>
+          <span class="tag purple">3 partitions</span>
+          <span class="tag purple">localhost:9092</span>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-icon blue">⚙️</div>
+          <h3>consumer.py</h3>
+        </div>
+        <p>Reads messages from Kafka and forwards them to Snowflake via the Snowpipe Streaming Python SDK. Opens one channel per Kafka partition. Buffers up to 100 rows or 5 seconds, then flushes — committing Kafka offsets only after Snowflake confirms the write.</p>
+        <div class="tag-list">
+          <span class="tag blue">snowpipe-streaming</span>
+          <span class="tag blue">PAT auth</span>
+          <span class="tag blue">manual commit</span>
+          <span class="tag blue">3 channels</span>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-icon cyan">❄️</div>
+          <h3>Snowflake — CLICKSTREAM table</h3>
+        </div>
+        <p>Landing table in <code>KAFKA_DEMO.STREAMING</code>. The <code>CLICKSTREAM-STREAMING</code> pipe is auto-created by the SDK. The <code>payload</code> column is <code>VARIANT</code>, storing the nested JSON as a queryable Snowflake object.</p>
+        <div class="tag-list">
+          <span class="tag cyan">KAFKA_DEMO.STREAMING</span>
+          <span class="tag cyan">VARIANT payload</span>
+          <span class="tag cyan">auto pipe</span>
+          <span class="tag cyan">serverless ingest</span>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Step-by-step -->
+    <p class="steps-title">How a single event flows end-to-end</p>
+
+    <div class="steps">
+
+      <div class="step">
+        <div class="step-num s1">1</div>
+        <div class="step-line"></div>
+        <div class="step-body">
+          <h4>Event generated</h4>
+          <p><code>producer.py</code> creates a JSON event with a unique <code>event_id</code>, a random <code>event_type</code>, and a nested <code>payload</code> dict containing IP, country, amount, and browser string.</p>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-num s2">2</div>
+        <div class="step-line"></div>
+        <div class="step-body">
+          <h4>Published to Kafka</h4>
+          <p>The event is serialized to JSON and produced to the <code>events</code> topic. The <code>user_id</code> is used as the message key — Kafka hashes it to assign the message to one of the 3 partitions consistently.</p>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-num s3">3</div>
+        <div class="step-line"></div>
+        <div class="step-body">
+          <h4>Consumed from Kafka</h4>
+          <p><code>consumer.py</code> polls Kafka every second. Each message is decoded from JSON and annotated with <code>kafka_offset</code> and <code>kafka_partition</code> before being added to an in-memory buffer.</p>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-num s4">4</div>
+        <div class="step-line"></div>
+        <div class="step-body">
+          <h4>Appended to Snowpipe channel</h4>
+          <p>When the buffer reaches 100 rows or 5 seconds have passed, each row is appended to its partition's Snowpipe Streaming channel via <code>append_row()</code>. The Kafka offset is passed as the <code>offset_token</code> for exactly-once deduplication.</p>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-num s5">5</div>
+        <div class="step-line"></div>
+        <div class="step-body">
+          <h4>Snowflake flush confirmed</h4>
+          <p>The consumer calls <code>wait_for_flush()</code>, blocking until the SDK confirms all rows in all channels have been durably written to Snowflake cloud storage.</p>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-num s6">6</div>
+        <div class="step-line"></div>
+        <div class="step-body">
+          <h4>Kafka offsets committed</h4>
+          <p>Only after the Snowflake flush is confirmed does the consumer commit the Kafka offsets. This guarantees that if the consumer crashes, the unconfirmed messages will be re-delivered and re-processed.</p>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-num s7">7</div>
+        <div class="step-line"></div>
+        <div class="step-body">
+          <h4>Queryable in Snowflake</h4>
+          <p>Rows are immediately visible in <code>KAFKA_DEMO.STREAMING.CLICKSTREAM</code>. The <code>payload</code> column is a native <code>VARIANT</code> object — fields like <code>payload:country</code> and <code>payload:amount</code> can be queried directly with Snowflake's semi-structured syntax.</p>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Guarantees -->
+    <div class="guarantee">
+      <h3>Delivery guarantees &amp; design decisions</h3>
+      <div class="guarantee-grid">
+        <div class="guarantee-item">
+          <span class="g-icon">🔁</span>
+          <p><strong>At-least-once delivery</strong>Kafka offsets are committed only after <code>wait_for_flush()</code> succeeds. A crash before commit causes re-delivery; the SDK deduplicates via offset tokens.</p>
+        </div>
+        <div class="guarantee-item">
+          <span class="g-icon">📌</span>
+          <p><strong>Resumable channels</strong>Channels are named <code>partition_0</code>, <code>partition_1</code>, etc. If the consumer restarts, it reopens the same channels and continues from the last committed offset.</p>
+        </div>
+        <div class="guarantee-item">
+          <span class="g-icon">🔐</span>
+          <p><strong>PAT authentication</strong>The Snowpipe Streaming SDK authenticates using a Programmatic Access Token (PAT) scoped to the SYSADMIN role. No RSA keys required.</p>
+        </div>
+        <div class="guarantee-item">
+          <span class="g-icon">⚡</span>
+          <p><strong>Serverless ingestion</strong>Snowpipe Streaming uses no Snowflake warehouse. Ingestion compute is managed by Snowflake internally and billed per row/GB rather than per second of compute.</p>
+        </div>
+      </div>
+    </div>
+
+    </div><!-- end subtab-sp-arch -->
+
+    <!-- ── Sub-tab: Consumer Deep Dive ── -->
+    <div id="subtab-sp-consumer" class="subtab-content">
+    <div class="deep-dive">
+
+      <!-- Section: How it works -->
+      <div class="section">
+        <p class="section-title">How consumer.py works</p>
+
+        <div class="code-block">
+          <div class="code-block-header">consumer.py — core poll loop</div>
+          <pre><span class="comment"># One channel per Kafka partition — opened lazily on first message</span>
+<span class="kw">def</span> <span class="fn">get_channel</span>(partition_id):
+    <span class="kw">if</span> partition_id <span class="kw">not in</span> channels:
+        ch, _ = sf_client.<span class="fn">open_channel</span>(channel_name=<span class="str">f"partition_{partition_id}"</span>)
+        channels[partition_id] = ch
+    <span class="kw">return</span> channels[partition_id]
+
+<span class="comment"># Poll Kafka — buffer rows by partition</span>
+<span class="kw">while</span> running:
+    msg = kafka.<span class="fn">poll</span>(<span class="num">1.0</span>)
+    <span class="kw">if</span> msg:
+        row = json.<span class="fn">loads</span>(msg.<span class="fn">value</span>())
+        row[<span class="str">"kafka_offset"</span>]    = msg.<span class="fn">offset</span>()   <span class="comment"># for traceability</span>
+        row[<span class="str">"kafka_partition"</span>] = msg.<span class="fn">partition</span>() <span class="comment"># for traceability</span>
+        batch.<span class="fn">setdefault</span>(msg.<span class="fn">partition</span>(), []).<span class="fn">append</span>((row, <span class="fn">str</span>(msg.<span class="fn">offset</span>())))
+        offsets_to_commit[msg.<span class="fn">partition</span>()] = msg.<span class="fn">offset</span>() + <span class="num">1</span>
+
+    <span class="comment"># Flush when buffer is full OR time interval has elapsed</span>
+    <span class="kw">if</span> total_buffered >= <span class="var">BATCH_SIZE</span> <span class="kw">or</span> elapsed >= <span class="var">FLUSH_INTERVAL_SECS</span>:
+        <span class="kw">for</span> p, rows <span class="kw">in</span> batch.<span class="fn">items</span>():
+            ch = <span class="fn">get_channel</span>(p)
+            <span class="kw">for</span> row, offset_token <span class="kw">in</span> rows:
+                ch.<span class="fn">append_row</span>(row, offset_token=offset_token)
+
+        sf_client.<span class="fn">wait_for_flush</span>(timeout_seconds=<span class="num">30</span>)  <span class="comment"># blocks until SF confirms</span>
+
+        <span class="kw">for</span> p, offset <span class="kw">in</span> offsets_to_commit.<span class="fn">items</span>():
+            kafka.<span class="fn">commit</span>(offsets=[<span class="fn">TopicPartition</span>(<span class="var">TOPIC</span>, p, offset)])  <span class="comment"># AFTER flush</span></pre>
+        </div>
+
+        <div class="two-col">
+          <div class="info-box">
+            <h4>Why manual Kafka offset commits?</h4>
+            <p style="font-size:0.8rem;color:#8b949e;line-height:1.6">Auto-commit advances the offset on a timer regardless of whether Snowflake has confirmed the write. If the consumer crashes between auto-commit and a successful flush, those messages are silently lost.<br><br>Manual commit after <code>wait_for_flush()</code> guarantees the Kafka offset only advances when data is durably in Snowflake.</p>
+          </div>
+          <div class="info-box">
+            <h4>Why one channel per partition?</h4>
+            <p style="font-size:0.8rem;color:#8b949e;line-height:1.6">Snowpipe Streaming channels are ordered sequences. Mapping one channel to one Kafka partition preserves per-partition ordering and keeps channel recovery simple — when a consumer instance picks up a partition after a rebalance, it just reopens the same named channel and continues.<br><br>Mixing partitions into a single channel would require coordination across threads.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Section: Key considerations -->
+      <div class="section">
+        <p class="section-title">Key design considerations</p>
+
+        <div class="consider-grid">
+
+          <div class="consider-card">
+            <div class="c-header">
+              <span class="c-badge blue">Delivery</span>
+              <h4>Exactly-once via offset_token</h4>
+            </div>
+            <p>Kafka delivers messages <em>at-least-once</em> — if the consumer crashes before committing an offset, those messages will be re-delivered on restart. The SDK's <code>offset_token</code> deduplication means duplicate deliveries are silently discarded at the Snowflake layer, giving you effectively exactly-once writes.</p>
+            <p style="margin-top:10px"><strong style="color:#e6edf3">How this demo implements it:</strong> every <code>append_row()</code> call passes the Kafka offset as the <code>offset_token</code>. Kafka offsets are committed only after <code>wait_for_flush()</code> confirms the write. On restart, Kafka re-delivers any uncommitted messages — the SDK recognises the duplicate offset tokens and discards them automatically.</p>
+          </div>
+
+          <div class="consider-card">
+            <div class="c-header">
+              <span class="c-badge yellow">Tuning</span>
+              <h4>Batch size vs. latency</h4>
+            </div>
+            <p><code>BATCH_SIZE=100</code> and <code>FLUSH_INTERVAL_SECS=5</code> are demo values. In production, higher batch sizes (1,000–10,000) reduce per-row overhead. Lower flush intervals reduce end-to-end latency. Tune based on your throughput and acceptable lag.</p>
+          </div>
+
+          <div class="consider-card">
+            <div class="c-header">
+              <span class="c-badge yellow">Failure</span>
+              <h4>wait_for_flush() timeout</h4>
+            </div>
+            <p>If Snowflake is under pressure, <code>wait_for_flush(timeout_seconds=30)</code> can raise a timeout exception. In production, this should be caught, logged, and retried with exponential backoff — the SDK's internal buffer preserves the rows until the next successful flush.</p>
+          </div>
+
+          <div class="consider-card">
+            <div class="c-header">
+              <span class="c-badge green">HA</span>
+              <h4>High availability via consumer groups</h4>
+            </div>
+            <p>Run multiple instances of <code>consumer.py</code> with the same <code>group.id</code>. Kafka automatically distributes the 3 partitions across live instances. If one crashes, Kafka rebalances its partitions to surviving instances within seconds.</p>
+          </div>
+
+          <div class="consider-card">
+            <div class="c-header">
+              <span class="c-badge cyan">Schema</span>
+              <h4>Manual schema management</h4>
+            </div>
+            <p>Unlike the Kafka Connector or Openflow, the SDK does not auto-evolve the Snowflake table. You are responsible for keeping the table DDL in sync with your data.</p>
+            <p style="margin-top:10px"><strong style="color:#e6edf3">What that means in practice:</strong></p>
+            <ul style="font-size:0.8rem;color:#8b949e;line-height:1.8;padding-left:18px;margin-top:6px">
+              <li>Add a new field to your Kafka messages → <code>ALTER TABLE ... ADD COLUMN</code> before deploying the new consumer</li>
+              <li>Remove a field → old rows keep the column; consumer must stop writing it or write <code>NULL</code></li>
+              <li>Rename a field → add the new column, backfill, remove the old one manually</li>
+              <li>Change a type → requires a new column + migration; the SDK has no type-coercion layer</li>
+            </ul>
+            <p style="margin-top:10px">In this demo, <code>payload</code> is <code>VARIANT</code> — nested fields can change freely without a DDL change. Only the top-level typed columns (<code>event_id</code>, <code>event_type</code>, etc.) require a schema migration if they change.</p>
+          </div>
+
+          <div class="consider-card">
+            <div class="c-header">
+              <span class="c-badge blue">Auth</span>
+              <h4>PAT scope &amp; expiry</h4>
+            </div>
+            <p>The PAT used here is scoped to <code>SYSADMIN</code>. In production, create a dedicated service role with only <code>INSERT</code> on the target table — not <code>SYSADMIN</code>. PATs expire (default 15 days, up to 365 days) — build rotation into your deployment pipeline.</p>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- Section: Production checklist -->
+      <div class="section">
+        <p class="section-title">Running in production</p>
+
+        <div class="two-col" style="margin-bottom:24px">
+
+          <div class="info-box">
+            <h4>🏗️ Deployment</h4>
+            <ul class="checklist" style="margin-top:8px">
+              <li><span class="ci">🐳</span><div><strong>Containerize</strong>Build a Docker image from consumer.py + requirements.txt. Deploy as a Kubernetes Deployment or ECS task with replicas matching your partition count.</div></li>
+              <li><span class="ci">📦</span><div><strong>Scale = partitions</strong>Set replicas equal to the number of Kafka topic partitions. Each instance will own 1+ partitions via consumer group rebalancing.</div></li>
+              <li><span class="ci">🔄</span><div><strong>Graceful shutdown</strong>SIGTERM is already handled — the consumer drains and flushes before exiting. Set <code>terminationGracePeriodSeconds: 60</code> in your pod spec.</div></li>
+              <li><span class="ci">📍</span><div><strong>Co-locate with Kafka</strong>Run consumers in the same cloud/region as your Kafka brokers to minimize read latency. The Snowflake write goes over HTTPS and is WAN-tolerant.</div></li>
+            </ul>
+          </div>
+
+          <div class="info-box">
+            <h4>🔐 Security</h4>
+            <ul class="checklist" style="margin-top:8px">
+              <li><span class="ci">🔑</span><div><strong>Dedicated service role</strong>Create a role with only <code>INSERT ON TABLE</code> and <code>USAGE ON DATABASE/SCHEMA</code>. Never use SYSADMIN in production.</div></li>
+              <li><span class="ci">🗝️</span><div><strong>PAT rotation</strong>Generate PATs with a 30–90 day expiry. Store in a secrets manager (AWS Secrets Manager, HashiCorp Vault). Rotate before expiry and redeploy.</div></li>
+              <li><span class="ci">🌐</span><div><strong>Network policy</strong>Bind the Snowflake service user to a network policy that allows only the egress IPs of your consumer deployment. Block all other sources.</div></li>
+              <li><span class="ci">🚫</span><div><strong>No secrets in code</strong>Read credentials from environment variables or a secrets manager injection — never hardcode or commit them.</div></li>
+            </ul>
+          </div>
+
+        </div>
+
+        <div class="two-col">
+
+          <div class="info-box">
+            <h4>📊 Monitoring</h4>
+            <ul class="checklist" style="margin-top:8px">
+              <li><span class="ci">📈</span><div><strong>Prometheus metrics</strong>Set <code>SS_ENABLE_METRICS=true</code> to expose a built-in Prometheus endpoint on port 50000. Scrape channel throughput, flush latency, and error counts.</div></li>
+              <li><span class="ci">🔍</span><div><strong>Channel health in Snowflake</strong>Query <code>SHOW CHANNELS IN PIPE KAFKA_DEMO.STREAMING."CLICKSTREAM-STREAMING"</code> to see per-channel status and last committed offset.</div></li>
+              <li><span class="ci">⏱️</span><div><strong>Consumer lag</strong>Monitor Kafka consumer group lag separately (e.g., Kafka UI, Grafana). High lag means the consumer isn't keeping up with the producer.</div></li>
+            </ul>
+          </div>
+
+          <div class="info-box">
+            <h4>⚡ Tuning for high throughput</h4>
+            <ul class="checklist" style="margin-top:8px">
+              <li><span class="ci">📦</span><div><strong>Increase batch size</strong>Raise <code>BATCH_SIZE</code> to 1,000–10,000 for high-volume workloads. Fewer, larger flushes are more efficient than many small ones.</div></li>
+              <li><span class="ci">🔀</span><div><strong>More partitions</strong>Add Kafka topic partitions and matching consumer instances to scale horizontally. Each partition = one independent channel = linear throughput scaling.</div></li>
+              <li><span class="ci">🧵</span><div><strong>Async append</strong>For very high throughput, use a threaded model: one thread per partition calling <code>append_row()</code> in parallel, with a single coordinating thread calling <code>wait_for_flush()</code>.</div></li>
+              <li><span class="ci">📉</span><div><strong>Suppress SDK logs</strong>Set <code>SS_LOG_LEVEL=error</code> in production to eliminate verbose INFO output and reduce log storage costs.</div></li>
+            </ul>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- Section: Useful queries -->
+      <div class="section">
+        <p class="section-title">Useful Snowflake queries</p>
+
+        <div class="code-block">
+          <div class="code-block-header">Verify data is landing</div>
+          <pre><span class="kw">SELECT</span> COUNT(*) <span class="kw">FROM</span> KAFKA_DEMO.STREAMING.CLICKSTREAM;
+
+<span class="kw">SELECT</span> * <span class="kw">FROM</span> KAFKA_DEMO.STREAMING.CLICKSTREAM <span class="kw">LIMIT</span> <span class="num">10</span>;</pre>
+        </div>
+
+        <div class="code-block">
+          <div class="code-block-header">Check partition distribution</div>
+          <pre><span class="kw">SELECT</span> kafka_partition, COUNT(*) <span class="kw">AS</span> row_count
+<span class="kw">FROM</span> KAFKA_DEMO.STREAMING.CLICKSTREAM
+<span class="kw">GROUP BY</span> <span class="num">1</span> <span class="kw">ORDER BY</span> <span class="num">1</span>;</pre>
+        </div>
+
+        <div class="code-block">
+          <div class="code-block-header">Query nested VARIANT payload</div>
+          <pre><span class="kw">SELECT</span>
+    event_id,
+    event_type,
+    payload:<span class="var">country</span>::VARCHAR   <span class="kw">AS</span> country,
+    payload:<span class="var">amount</span>::FLOAT     <span class="kw">AS</span> amount,
+    payload:<span class="var">ip</span>::VARCHAR       <span class="kw">AS</span> ip_address
+<span class="kw">FROM</span> KAFKA_DEMO.STREAMING.CLICKSTREAM
+<span class="kw">LIMIT</span> <span class="num">20</span>;</pre>
+        </div>
+
+        <div class="code-block">
+          <div class="code-block-header">Channel health</div>
+          <pre><span class="kw">SHOW</span> CHANNELS <span class="kw">IN</span> PIPE KAFKA_DEMO.STREAMING.<span class="str">"CLICKSTREAM-STREAMING"</span>;</pre>
+        </div>
+
+        <div class="code-block">
+          <div class="code-block-header">Throughput over time (events per minute)</div>
+          <pre><span class="kw">SELECT</span>
+    DATE_TRUNC(<span class="str">'minute'</span>, event_ts)  <span class="kw">AS</span> minute,
+    COUNT(*)                         <span class="kw">AS</span> events
+<span class="kw">FROM</span> KAFKA_DEMO.STREAMING.CLICKSTREAM
+<span class="kw">GROUP BY</span> <span class="num">1</span>
+<span class="kw">ORDER BY</span> <span class="num">1</span> <span class="kw">DESC</span>
+<span class="kw">LIMIT</span> <span class="num">30</span>;</pre>
+        </div>
+
+      </div>
+
+    </div>
+    </div><!-- end subtab-sp-consumer -->
+
+    <!-- ── Sub-tab: Setup Guide ── -->
+    <div id="subtab-sp-setup" class="subtab-content">
+      <div style="max-width:960px;margin:0 auto;">
+
+        <div class="setup-section">
+          <p class="section-title">Quick Start</p>
+
+          <p style="font-size:0.85rem;color:#8b949e;margin-bottom:24px;line-height:1.6;">Everything needed to run the Kafka → Snowpipe Streaming SDK demo from scratch.</p>
+
+          <p class="section-title" style="border-bottom:none;margin-bottom:16px;font-size:1rem;">Prerequisites</p>
+
+          <div class="prereq-grid">
+            <div class="prereq-card">
+              <h4>🐳 Docker Desktop</h4>
+              <ul>
+                <li>Docker Desktop installed and running</li>
+                <li>Runs the single-node Kafka broker container</li>
+                <li><a href="https://www.docker.com/products/docker-desktop/" target="_blank" style="color:#58a6ff;text-decoration:none;">docker.com/products/docker-desktop</a></li>
+              </ul>
+            </div>
+            <div class="prereq-card">
+              <h4>🐍 Python 3.9+</h4>
+              <ul>
+                <li>Python 3.9 or higher</li>
+                <li>pip for package installation</li>
+                <li>Run <code>pip install -r requirements.txt</code></li>
+              </ul>
+            </div>
+            <div class="prereq-card">
+              <h4>❄️ Snowflake Account</h4>
+              <ul>
+                <li>Role with SYSADMIN (or CREATE DATABASE privilege)</li>
+                <li>Programmatic Access Token (PAT)</li>
+                <li>PAT stored in <code>~/.snowflake/connections.toml</code></li>
+              </ul>
+            </div>
+          </div>
+
+          <div class="callout warn" style="margin-bottom:32px;">
+            <strong>⚠ Edit config.py before running</strong>
+            Replace <code>SFSENORTHAMERICA-MWALLI_AWSUSEAST2</code> and <code>MWALLI</code> with your own Snowflake account identifier and username. See the <strong>Python Code</strong> section below for the full file with annotations.
+          </div>
+
+          <p class="section-title" style="border-bottom:none;margin-bottom:16px;font-size:1rem;">Demo Files</p>
+
+          <div class="dir-tree">
+            <span class="dir">demos/snowpipe-streaming-sdk/</span><br>
+            &nbsp;&nbsp;├── <span class="file">docker-compose.yml</span>&nbsp;&nbsp;<span class="note"># Kafka broker (KRaft, no Zookeeper)</span><br>
+            &nbsp;&nbsp;├── <span class="file">requirements.txt</span>&nbsp;&nbsp;&nbsp;<span class="note"># Python dependencies</span><br>
+            &nbsp;&nbsp;├── <span class="file">config.py</span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="note"># ⚠ edit account + user here</span><br>
+            &nbsp;&nbsp;├── <span class="file">producer.py</span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="note"># synthetic event generator (~10/sec)</span><br>
+            &nbsp;&nbsp;├── <span class="file">consumer.py</span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="note"># Kafka → Snowflake via SDK</span><br>
+            &nbsp;&nbsp;├── <span class="file">status.sql</span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="note"># monitoring queries for Snowflake</span><br>
+            &nbsp;&nbsp;└── <span class="dir">setup/</span><br>
+            &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└── <span class="file">snowflake_setup.sql</span>&nbsp;<span class="note"># one-time DDL</span>
+          </div>
+
+          <p class="section-title" style="border-bottom:none;margin-bottom:16px;font-size:1rem;">Setup Checklist</p>
+
+          <div class="steps" style="max-width:720px;margin:0 auto 48px;">
+
+            <div class="step">
+              <div class="step-num s1">1</div>
+              <div class="step-line"></div>
+              <div class="step-body">
+                <h4>Run Snowflake setup SQL <span style="font-weight:400;color:#8b949e;font-size:0.8rem">(one-time)</span></h4>
+                <p>Execute <code>demos/snowpipe-streaming-sdk/setup/snowflake_setup.sql</code> in Snowflake. Creates the <code>KAFKA_DEMO</code> database, <code>STREAMING</code> schema, and <code>CLICKSTREAM</code> table. The pipe is auto-created by the SDK — you don't need to create it manually.</p>
+              </div>
+            </div>
+
+            <div class="step">
+              <div class="step-num s2">2</div>
+              <div class="step-line"></div>
+              <div class="step-body">
+                <h4>Edit config.py</h4>
+                <p>Update <code>SNOWFLAKE_ACCOUNT</code> and the account/user values in <code>_load_pat_from_connections_toml()</code> to match your Snowflake account. Your PAT must be stored as <code>password</code> in <code>~/.snowflake/connections.toml</code>, or set the <code>SNOWFLAKE_PAT</code> environment variable.</p>
+              </div>
+            </div>
+
+            <div class="step">
+              <div class="step-num s3">3</div>
+              <div class="step-line"></div>
+              <div class="step-body">
+                <h4>Install Python dependencies</h4>
+                <p><code>cd demos/snowpipe-streaming-sdk &amp;&amp; pip install -r requirements.txt</code> — installs <code>snowpipe-streaming</code>, <code>confluent-kafka</code>, and <code>faker</code>.</p>
+              </div>
+            </div>
+
+            <div class="step">
+              <div class="step-num s4">4</div>
+              <div class="step-line"></div>
+              <div class="step-body">
+                <h4>Start Kafka (Terminal 1)</h4>
+                <p><code>cd demos/snowpipe-streaming-sdk &amp;&amp; docker compose up -d</code> — starts a single-node Kafka broker on <code>localhost:9092</code>. Then create the topic once (see Kafka section below).</p>
+              </div>
+            </div>
+
+            <div class="step">
+              <div class="step-num s5">5</div>
+              <div class="step-line"></div>
+              <div class="step-body">
+                <h4>Start the consumer (Terminal 2)</h4>
+                <p><code>python demos/snowpipe-streaming-sdk/consumer.py</code> — connects to Snowflake, opens one Snowpipe Streaming channel per Kafka partition, and begins polling for messages.</p>
+              </div>
+            </div>
+
+            <div class="step">
+              <div class="step-num s6">6</div>
+              <div class="step-line"></div>
+              <div class="step-body">
+                <h4>Start the producer (Terminal 3)</h4>
+                <p><code>python demos/snowpipe-streaming-sdk/producer.py</code> — generates synthetic clickstream events (page_view / click / purchase / signup) at ~10 events/sec and publishes them to the <code>events</code> topic.</p>
+              </div>
+            </div>
+
+            <div class="step">
+              <div class="step-num s7">7</div>
+              <div class="step-line"></div>
+              <div class="step-body">
+                <h4>Verify data in Snowflake</h4>
+                <p>Run the status queries (see Status Queries section below) against <code>KAFKA_DEMO.STREAMING.CLICKSTREAM</code>. Query #1 (live row count) should climb every few seconds. Query #6 (staleness) should read ~5–10 seconds.</p>
+              </div>
+            </div>
+
+          </div>
+
+          <p class="section-title" style="border-bottom:none;margin-bottom:16px;font-size:1rem;">Shutdown</p>
+
+          <div class="two-col" style="margin-bottom:0;">
+            <div class="info-box">
+              <h4>Stop the demo</h4>
+              <ul class="checklist" style="margin-top:8px">
+                <li><span class="ci">1</span><div><code>Ctrl+C</code> in the producer terminal — drains buffered messages before exit</div></li>
+                <li><span class="ci">2</span><div><code>Ctrl+C</code> in the consumer terminal — flushes any buffered rows to Snowflake before exit</div></li>
+                <li><span class="ci">3</span><div><code>docker compose down</code> — stops and removes the Kafka container</div></li>
+              </ul>
+            </div>
+            <div class="info-box">
+              <h4>Troubleshooting</h4>
+              <ul class="checklist" style="margin-top:8px">
+                <li><span class="ci">⚠</span><div><strong>Consumer exits immediately</strong> — PAT not found; check account/user in config.py match your connections.toml</div></li>
+                <li><span class="ci">⚠</span><div><strong>No flush messages after 10s</strong> — producer not running; start producer.py</div></li>
+                <li><span class="ci">⚠</span><div><strong>localhost:9092 unreachable</strong> — Kafka container not running; <code>docker compose up -d</code></div></li>
+                <li><span class="ci">⚠</span><div><strong>Row count not increasing</strong> — consumer stopped or topic has no messages; restart consumer.py</div></li>
+                <li><span class="ci">⚠</span><div><strong>High pipeline staleness (&gt;30s)</strong> — consumer or producer stopped; check both terminals</div></li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <div class="setup-section">
+          <p class="section-title">Snowflake Setup</p>
+
+          <p style="font-size:0.85rem;color:#8b949e;margin-bottom:24px;line-height:1.6;">Run this once before starting the demo. Creates the database, schema, and target table. The <code>CLICKSTREAM-STREAMING</code> pipe is auto-created by the Snowpipe Streaming SDK on the first <code>open_channel()</code> call — you do not need to create it manually.</p>
+
+          <div class="code-block">
+            <div class="cb-header">
+              <span>demos/snowpipe-streaming-sdk/setup/snowflake_setup.sql</span>
+              <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+            </div>
+            <pre>USE ROLE SYSADMIN;
+
+CREATE DATABASE IF NOT EXISTS KAFKA_DEMO;
+CREATE SCHEMA IF NOT EXISTS KAFKA_DEMO.STREAMING;
+
+CREATE OR REPLACE TABLE KAFKA_DEMO.STREAMING.CLICKSTREAM (
+    event_id        VARCHAR,
+    event_type      VARCHAR,
+    user_id         VARCHAR,
+    payload         VARIANT,
+    event_ts        TIMESTAMP_NTZ,
+    kafka_offset    NUMBER,
+    kafka_partition NUMBER
+);</pre>
+          </div>
+
+          <div class="callout ok" style="margin-bottom:32px;">
+            <strong>What this creates</strong>
+            The <code>CLICKSTREAM</code> table matches the fields produced by <code>producer.py</code>. The <code>payload</code> column is <code>VARIANT</code> — it stores the nested JSON object (ip, country, amount, browser) as a native Snowflake semi-structured type, queryable with <code>payload:field_name</code> syntax (e.g., <code>payload:country::VARCHAR</code>).
+          </div>
+
+          <p class="section-title" style="border-bottom:none;margin-bottom:16px;font-size:1rem;">PAT Authentication Setup</p>
+          <p style="font-size:0.85rem;color:#8b949e;margin-bottom:16px;line-height:1.6;">The consumer authenticates to Snowflake using a Programmatic Access Token (PAT). It reads the PAT from <code>~/.snowflake/connections.toml</code>, or from the <code>SNOWFLAKE_PAT</code> environment variable if set.</p>
+
+          <div class="callout" style="margin-bottom:16px;">
+            <strong>How to generate a PAT</strong>
+            In Snowsight: <strong>Admin → Security → Programmatic Access Tokens</strong> → Create new token. Scope it to your role (e.g., SYSADMIN). Copy the token value — it is only shown once.
+          </div>
+
+          <div class="code-block">
+            <div class="cb-header">
+              <span>~/.snowflake/connections.toml — add this entry</span>
+              <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+            </div>
+            <pre>[my_connection]
+account = "YOUR-ORG-ACCOUNT"
+user    = "YOUR_USERNAME"
+password = "pat_your_programmatic_access_token_here"</pre>
+          </div>
+
+          <p style="font-size:0.8rem;color:#8b949e;line-height:1.6;max-width:960px;margin:0 auto 0;">The connection name (e.g., <code>my_connection</code>) does not matter — <code>config.py</code> scans all entries and matches on <code>account</code> + <code>user</code>. Alternatively, skip <code>connections.toml</code> entirely and set <code>SNOWFLAKE_PAT=pat_...</code> as an environment variable before running <code>consumer.py</code>.</p>
+        </div>
+
+        <div class="setup-section">
+          <p class="section-title">Kafka (Docker)</p>
+
+          <p style="font-size:0.85rem;color:#8b949e;margin-bottom:24px;line-height:1.6;">Single-node Kafka broker in KRaft mode (no Zookeeper required). Exposes port <code>9092</code> on localhost. The healthcheck confirms the broker is ready before you create topics.</p>
+
+          <div class="code-block">
+            <div class="cb-header">
+              <span>demos/snowpipe-streaming-sdk/docker-compose.yml</span>
+              <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+            </div>
+            <pre>services:
+  kafka:
+    image: apache/kafka:3.7.0
+    container_name: kafka-demo
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@localhost:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      CLUSTER_ID: "MkU3OEVBNTcwNTJENDM2Qk"
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list"]
+      interval: 10s
+      timeout: 5s
+      retries: 5</pre>
+          </div>
+
+          <p class="section-title" style="border-bottom:none;margin-bottom:16px;font-size:1rem;">Start Kafka</p>
+
+          <div class="code-block">
+            <div class="cb-header">
+              <span>Terminal — start broker (detached)</span>
+              <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+            </div>
+            <pre>cd demos/snowpipe-streaming-sdk &amp;&amp; docker compose up -d</pre>
+          </div>
+
+          <div class="code-block">
+            <div class="cb-header">
+              <span>Terminal — verify broker is healthy</span>
+              <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+            </div>
+            <pre>docker ps</pre>
+          </div>
+
+          <p style="font-size:0.8rem;color:#8b949e;margin-bottom:24px;line-height:1.6;max-width:960px;">You should see <code>kafka-demo</code> with status <code>Up (healthy)</code>. Wait for the healthcheck to pass (up to ~30 seconds on first run) before creating the topic.</p>
+
+          <p class="section-title" style="border-bottom:none;margin-bottom:16px;font-size:1rem;">Create the Topic <span style="font-weight:400;color:#8b949e;font-size:0.85rem">(one-time after first <code>docker compose up</code>)</span></p>
+          <p style="font-size:0.85rem;color:#8b949e;margin-bottom:16px;line-height:1.6;">Creates the <code>events</code> topic with 3 partitions. Each partition maps to one Snowpipe Streaming channel in the consumer.</p>
+
+          <div class="code-block">
+            <div class="cb-header">
+              <span>Terminal — create events topic</span>
+              <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+            </div>
+            <pre>docker exec kafka-demo /opt/kafka/bin/kafka-topics.sh \
+  --create --topic events --partitions 3 --replication-factor 1 \
+  --bootstrap-server localhost:9092</pre>
+          </div>
+
+          <div class="code-block">
+            <div class="cb-header">
+              <span>Terminal — verify topic was created</span>
+              <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+            </div>
+            <pre>docker exec kafka-demo /opt/kafka/bin/kafka-topics.sh \
+  --describe --topic events \
+  --bootstrap-server localhost:9092</pre>
+          </div>
+
+          <p class="section-title" style="border-bottom:none;margin-bottom:16px;font-size:1rem;">Stop Kafka</p>
+
+          <div class="code-block">
+            <div class="cb-header">
+              <span>Terminal — stop and remove container</span>
+              <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+            </div>
+            <pre>docker compose down</pre>
+          </div>
+
+          <div class="callout warn">
+            <strong>Topic data is not persisted between runs</strong>
+            Kafka topic data is lost when the container stops. The <code>events</code> topic must be re-created after each <code>docker compose up</code>. Snowflake data is permanent — the consumer will reopen the same named channels (<code>partition_0</code>, <code>partition_1</code>, <code>partition_2</code>) and continue appending rows where it left off.
+          </div>
+        </div>
+
+        <div class="setup-section">
+          <p class="section-title">Python Code</p>
+
+          <p class="section-title" style="border-bottom:none;margin-bottom:16px;font-size:1rem;">requirements.txt</p>
+
+          <div class="code-block">
+            <div class="cb-header">
+              <span>demos/snowpipe-streaming-sdk/requirements.txt</span>
+              <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+            </div>
+            <pre>snowpipe-streaming&gt;=1.4.0
+confluent-kafka
+faker</pre>
+          </div>
+
+          <div class="code-block" style="margin-bottom:40px;">
+            <div class="cb-header">
+              <span>Terminal — install dependencies</span>
+              <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+            </div>
+            <pre>cd demos/snowpipe-streaming-sdk &amp;&amp; pip install -r requirements.txt</pre>
+          </div>
+
+          <p class="section-title" style="border-bottom:none;margin-bottom:16px;font-size:1rem;">config.py</p>
+
+          <div class="callout warn" style="margin-bottom:16px;">
+            <strong>⚠ You must edit these values before running</strong>
+            Replace <code>YOUR-ORG-ACCOUNT</code> with your Snowflake account identifier (format: <code>ORG-ACCOUNT</code>, e.g. <code>MYORG-MYACCOUNT</code>) and <code>YOUR_USERNAME</code> with your Snowflake username. These appear in two places in the file (marked with comments below).
+          </div>
+
+          <div class="code-block">
+            <div class="cb-header">
+              <span>demos/snowpipe-streaming-sdk/config.py</span>
+              <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+            </div>
+            <pre>import os
+import tomllib
+
+# Suppress Snowpipe Streaming SDK INFO/WARN logs — only show errors
+os.environ.setdefault("SS_LOG_LEVEL", "error")
+
+
+def _load_pat_from_connections_toml():
+    toml_path = os.path.expanduser("~/.snowflake/connections.toml")
+    with open(toml_path, "rb") as f:
+        conns = tomllib.load(f)
+    for conn in conns.values():
+        if (
+            conn.get("account", "").upper() == "YOUR-ORG-ACCOUNT"   # &lt;-- edit this
+            and conn.get("user", "").upper() == "YOUR_USERNAME"      # &lt;-- and this
+            and conn.get("password")
+        ):
+            return conn["password"]
+    raise RuntimeError("PAT not found in ~/.snowflake/connections.toml")
+
+
+SNOWFLAKE_ACCOUNT = "YOUR-ORG-ACCOUNT"   # &lt;-- edit this
+SNOWFLAKE_ROLE = "SYSADMIN"
+SNOWFLAKE_DATABASE = "KAFKA_DEMO"
+SNOWFLAKE_SCHEMA = "STREAMING"
+SNOWFLAKE_TABLE = "CLICKSTREAM"
+SNOWFLAKE_PAT = os.environ.get("SNOWFLAKE_PAT") or _load_pat_from_connections_toml()
+
+KAFKA_BOOTSTRAP_SERVERS = "localhost:9092"
+KAFKA_TOPIC = "events"
+KAFKA_GROUP_ID = "snowpipe-demo"</pre>
+          </div>
+
+          <p class="section-title" style="border-bottom:none;margin-bottom:16px;font-size:1rem;">consumer.py</p>
+          <p style="font-size:0.85rem;color:#8b949e;margin-bottom:16px;line-height:1.6;">Reads messages from Kafka and writes them to Snowflake via the Snowpipe Streaming Python SDK. Opens one channel per Kafka partition. Buffers rows and flushes every 100 rows or 5 seconds, committing Kafka offsets only after Snowflake confirms the write.</p>
+
+          <div class="code-block">
+            <div class="cb-header">
+              <span>demos/snowpipe-streaming-sdk/consumer.py</span>
+              <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+            </div>
+            <pre>import json
+import os
+import signal
+import tempfile
+import time
+from datetime import datetime, timezone
+
+from confluent_kafka import Consumer, TopicPartition
+
+import config
+
+# Controls the main poll loop — set to False by signal handlers to trigger graceful shutdown
+running = True
+
+
+def handle_signal(sig, frame):
+    # Catches SIGINT (Ctrl+C) and SIGTERM (docker stop / kill).
+    global running
+    running = False
+
+
+signal.signal(signal.SIGINT, handle_signal)
+signal.signal(signal.SIGTERM, handle_signal)
+
+# Flush to Snowflake after this many rows are buffered across all partitions
+BATCH_SIZE = 100
+
+# Also flush if this many seconds have passed with any buffered rows (low-volume safety net)
+FLUSH_INTERVAL_SECS = 5.0
+
+
+def build_profile_file():
+    # Write auth config to a temp file so the PAT is never stored on disk permanently.
+    profile = {
+        "authorization_type": "PAT",
+        "url": f"https://{config.SNOWFLAKE_ACCOUNT}.snowflakecomputing.com:443",
+        "account": config.SNOWFLAKE_ACCOUNT,
+        "role": config.SNOWFLAKE_ROLE,
+        "personal_access_token": config.SNOWFLAKE_PAT,
+    }
+    path = os.path.join(tempfile.gettempdir(), "sf_snowpipe_profile.json")
+    with open(path, "w") as f:
+        json.dump(profile, f)
+    return path
+
+
+def main():
+    from snowflake.ingest.streaming import StreamingIngestClient
+
+    profile_path = build_profile_file()
+
+    # Default pipe name convention: &lt;TABLE&gt;-STREAMING (auto-created on first open_channel)
+    pipe_name = f"{config.SNOWFLAKE_TABLE}-STREAMING"
+
+    print(f"Connecting to Snowflake account {config.SNOWFLAKE_ACCOUNT}")
+    print(f"Target: {config.SNOWFLAKE_DATABASE}.{config.SNOWFLAKE_SCHEMA}.{config.SNOWFLAKE_TABLE}")
+    print(f"Pipe: {pipe_name}")
+
+    sf_client = StreamingIngestClient(
+        client_name="kafka-demo-consumer",
+        db_name=config.SNOWFLAKE_DATABASE,
+        schema_name=config.SNOWFLAKE_SCHEMA,
+        pipe_name=pipe_name,
+        profile_json=profile_path,
+    )
+
+    # One channel per Kafka partition. Named channels are resumable — if this consumer
+    # restarts and picks up the same partition, it reopens the same channel and continues.
+    channels = {}
+
+    def get_channel(partition_id):
+        if partition_id not in channels:
+            ch, _ = sf_client.open_channel(channel_name=f"partition_{partition_id}")
+            channels[partition_id] = ch
+            print(f"Opened channel for partition {partition_id}")
+        return channels[partition_id]
+
+    kafka = Consumer({
+        "bootstrap.servers": config.KAFKA_BOOTSTRAP_SERVERS,
+        "group.id": config.KAFKA_GROUP_ID,
+        "auto.offset.reset": "earliest",
+        "enable.auto.commit": False,   # manual commit — only after Snowflake flush
+    })
+    kafka.subscribe([config.KAFKA_TOPIC])
+    print(f"Subscribed to Kafka topic '{config.KAFKA_TOPIC}' on {config.KAFKA_BOOTSTRAP_SERVERS}")
+    print("Press Ctrl+C to stop.\n")
+
+    batch = {}             # {partition_id: [(row_dict, offset_token), ...]}
+    offsets_to_commit = {} # {partition_id: next_offset_to_commit}
+    last_flush = time.time()
+    total_flushed = 0
+
+    try:
+        while running:
+            msg = kafka.poll(1.0)
+
+            if msg is None:
+                pass
+            elif msg.error():
+                print(f"Consumer error: {msg.error()}")
+            else:
+                p = msg.partition()
+                row = json.loads(msg.value())
+                row["kafka_offset"] = msg.offset()
+                row["kafka_partition"] = p
+                batch.setdefault(p, []).append((row, str(msg.offset())))
+                offsets_to_commit[p] = msg.offset() + 1
+
+            total_buffered = sum(len(v) for v in batch.values())
+            elapsed = time.time() - last_flush
+
+            if total_buffered &gt;= BATCH_SIZE or (elapsed &gt;= FLUSH_INTERVAL_SECS and total_buffered &gt; 0):
+
+                for p, rows in batch.items():
+                    ch = get_channel(p)
+                    for row, offset_token in rows:
+                        ch.append_row(row, offset_token=offset_token)
+
+                # Block until Snowflake confirms all rows are durably written
+                sf_client.wait_for_flush(timeout_seconds=30)
+
+                # Commit Kafka offsets AFTER Snowflake flush is confirmed
+                for p, offset in offsets_to_commit.items():
+                    kafka.commit(offsets=[TopicPartition(config.KAFKA_TOPIC, p, offset)])
+
+                total_flushed += total_buffered
+                ts = datetime.now(timezone.utc).strftime("%H:%M:%S")
+                print(f"[{ts}] Flushed {total_buffered} rows to Snowflake | total rows: {total_flushed} | partitions: {list(batch.keys())}")
+                batch.clear()
+                offsets_to_commit.clear()
+                last_flush = time.time()
+
+    finally:
+        for ch in channels.values():
+            try:
+                ch.close()
+            except Exception:
+                pass
+        sf_client.close()
+        kafka.close()
+        if os.path.exists(profile_path):
+            os.remove(profile_path)
+        print(f"\nShutdown complete. Total rows flushed: {total_flushed}")
+
+
+if __name__ == "__main__":
+    main()</pre>
+          </div>
+
+          <p class="section-title" style="border-bottom:none;margin-bottom:16px;font-size:1rem;">producer.py</p>
+          <p style="font-size:0.85rem;color:#8b949e;margin-bottom:16px;line-height:1.6;">Generates synthetic clickstream events using Faker and publishes them to the Kafka <code>events</code> topic at ~10 events/sec. The <code>user_id</code> is used as the Kafka message key, ensuring consistent partition assignment per user.</p>
+
+          <div class="code-block">
+            <div class="cb-header">
+              <span>demos/snowpipe-streaming-sdk/producer.py</span>
+              <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+            </div>
+            <pre>import json
+import time
+import uuid
+from datetime import datetime, timezone
+
+from confluent_kafka import Producer
+from faker import Faker
+
+import config
+
+fake = Faker()
+
+
+def delivery_report(err, msg):
+    # Called asynchronously after each produce() attempt. Only prints on failure.
+    if err:
+        print(f"Delivery failed: {err}")
+
+
+def main():
+    p = Producer({"bootstrap.servers": config.KAFKA_BOOTSTRAP_SERVERS})
+    count = 0
+    print(f"Producing events to topic '{config.KAFKA_TOPIC}' on {config.KAFKA_BOOTSTRAP_SERVERS}")
+    print("Press Ctrl+C to stop.\n")
+    try:
+        while True:
+            event = {
+                "event_id": str(uuid.uuid4()),
+                "event_type": fake.random_element(["page_view", "click", "purchase", "signup"]),
+                "user_id": str(uuid.uuid4()),
+                "payload": {
+                    "ip": fake.ipv4(),
+                    "country": fake.country_code(),
+                    "amount": round(fake.pyfloat(min_value=1, max_value=500), 2),
+                    "browser": fake.user_agent(),
+                },
+                "event_ts": datetime.now(timezone.utc).isoformat(),
+            }
+
+            # user_id as key ensures consistent partition assignment (hash-based)
+            p.produce(
+                config.KAFKA_TOPIC,
+                key=event["user_id"],
+                value=json.dumps(event),
+                callback=delivery_report,
+            )
+            count += 1
+
+            if count % 100 == 0:
+                p.flush()
+                print(f"Produced {count} events")
+
+            time.sleep(0.1)  # ~10 events/second
+
+    except KeyboardInterrupt:
+        p.flush()
+        print(f"\nStopped. Total produced: {count}")
+
+
+if __name__ == "__main__":
+    main()</pre>
+          </div>
+        </div>
+
+        <div class="setup-section">
+          <p class="section-title">Status Queries</p>
+
+          <p style="font-size:0.85rem;color:#8b949e;margin-bottom:24px;line-height:1.6;">Run these in Snowsight (or any SQL client) against <code>KAFKA_DEMO.STREAMING.CLICKSTREAM</code> while the demo is running. Queries 1–4 are best run repeatedly in quick succession to see data arriving live.</p>
+
+          <div class="code-block">
+            <div class="cb-header">
+              <span>demos/snowpipe-streaming-sdk/status.sql</span>
+              <button class="copy-btn" onclick="copyCode(this)">Copy All</button>
+            </div>
+            <pre>-- ──────────────────────────────────────────────────────────────────
+-- Snowpipe Streaming Demo — Status &amp; Progress Queries
+-- Database: KAFKA_DEMO  |  Schema: STREAMING  |  Table: CLICKSTREAM
+-- ──────────────────────────────────────────────────────────────────
+
+USE ROLE SYSADMIN;
+USE DATABASE KAFKA_DEMO;
+USE SCHEMA STREAMING;
+
+
+-- ── 1. Live row count ─────────────────────────────────────────────
+-- Quick sanity check — run repeatedly to watch the number climb.
+SELECT COUNT(*) AS total_rows FROM CLICKSTREAM;
+
+
+-- ── 2. Rows per minute (last 10 minutes) ─────────────────────────
+-- Shows ingestion rate over time; each row = one minute bucket.
+SELECT
+    DATE_TRUNC('minute', event_ts)  AS minute_bucket,
+    COUNT(*)                        AS rows_ingested
+FROM CLICKSTREAM
+WHERE event_ts &gt;= DATEADD('minute', -10, CURRENT_TIMESTAMP())
+GROUP BY 1
+ORDER BY 1 DESC;
+
+
+-- ── 3. Rows per Kafka partition ───────────────────────────────────
+-- Verifies all partitions are contributing; uneven counts are normal.
+SELECT
+    kafka_partition,
+    COUNT(*)                        AS row_count,
+    MIN(kafka_offset)               AS min_offset,
+    MAX(kafka_offset)               AS max_offset,
+    MAX(event_ts)                   AS latest_event_ts
+FROM CLICKSTREAM
+GROUP BY kafka_partition
+ORDER BY kafka_partition;
+
+
+-- ── 4. Latest 10 events ───────────────────────────────────────────
+-- Live preview of the most recently ingested rows.
+SELECT
+    event_id,
+    event_type,
+    user_id,
+    event_ts,
+    kafka_partition,
+    kafka_offset,
+    payload
+FROM CLICKSTREAM
+ORDER BY event_ts DESC
+LIMIT 10;
+
+
+-- ── 5. Event type breakdown ───────────────────────────────────────
+-- Confirms the producer's distribution (page_view / click / purchase / signup).
+SELECT
+    event_type,
+    COUNT(*)                        AS row_count,
+    ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER (), 1) AS pct
+FROM CLICKSTREAM
+GROUP BY event_type
+ORDER BY row_count DESC;
+
+
+-- ── 6. Pipeline staleness — how old is the newest event? ──────────
+-- Answers: "Is the pipeline keeping up right now?"
+-- Near-zero = healthy.  Large = producer stopped or consumer is behind.
+SELECT
+    MAX(event_ts)                                               AS newest_event_ts,
+    CURRENT_TIMESTAMP()                                         AS query_time,
+    DATEDIFF('second', MAX(event_ts), CURRENT_TIMESTAMP())      AS pipeline_staleness_secs
+FROM CLICKSTREAM;
+
+
+-- ── 7. Pipe status (Snowpipe Streaming auto-created pipe) ─────────
+SHOW PIPES LIKE '%CLICKSTREAM%';
+
+-- Pipe health (JSON):
+SELECT SYSTEM$PIPE_STATUS('KAFKA_DEMO.STREAMING.CLICKSTREAM-STREAMING') AS pipe_status_json;
+
+-- Channel-level status — one row per open channel:
+SHOW CHANNELS IN PIPE KAFKA_DEMO.STREAMING."CLICKSTREAM-STREAMING";
+
+
+-- ── 8. Snowpipe Streaming ingestion history (last hour) ───────────
+SELECT
+    start_time,
+    end_time,
+    credits_used,
+    num_bytes_migrated  AS bytes_ingested,
+    num_rows_migrated   AS rows_ingested
+FROM SNOWFLAKE.ACCOUNT_USAGE.SNOWPIPE_STREAMING_FILE_MIGRATION_HISTORY
+WHERE table_name  = 'CLICKSTREAM'
+  AND schema_name = 'STREAMING'
+  AND database_name = 'KAFKA_DEMO'
+  AND start_time &gt;= DATEADD('hour', -1, CURRENT_TIMESTAMP())
+ORDER BY start_time DESC;
+
+
+-- ── 9. Throughput summary (last 30 minutes) ───────────────────────
+SELECT
+    COUNT(*)                                                    AS total_rows,
+    COUNT(DISTINCT user_id)                                     AS unique_users,
+    COUNT(DISTINCT kafka_partition)                             AS active_partitions,
+    MIN(event_ts)                                               AS window_start,
+    MAX(event_ts)                                               AS window_end,
+    DATEDIFF('second', MIN(event_ts), MAX(event_ts))            AS window_secs,
+    ROUND(COUNT(*) / NULLIF(DATEDIFF('second', MIN(event_ts), MAX(event_ts)), 0), 1) AS rows_per_sec
+FROM CLICKSTREAM
+WHERE event_ts &gt;= DATEADD('minute', -30, CURRENT_TIMESTAMP());</pre>
+          </div>
+
+          <p class="section-title" style="margin-top:40px;">Query Reference</p>
+
+          <div class="cmp-wrap">
+            <table class="cmp-table">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Query</th>
+                  <th>What it shows</th>
+                  <th>When to use</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td class="factor">1</td>
+                  <td>Live row count</td>
+                  <td>Total rows in CLICKSTREAM</td>
+                  <td>Run repeatedly to watch count climb during demo</td>
+                </tr>
+                <tr>
+                  <td class="factor">2</td>
+                  <td>Rows per minute</td>
+                  <td>Ingestion rate over last 10 min (1 row = 1 min bucket)</td>
+                  <td>Show throughput trend over time</td>
+                </tr>
+                <tr>
+                  <td class="factor">3</td>
+                  <td>Partition distribution</td>
+                  <td>Row count + offset range per Kafka partition</td>
+                  <td>Verify all 3 partitions are contributing data</td>
+                </tr>
+                <tr>
+                  <td class="factor">4</td>
+                  <td>Latest 10 events</td>
+                  <td>Most recently ingested rows with full payload</td>
+                  <td>Live preview of data content and structure</td>
+                </tr>
+                <tr>
+                  <td class="factor">5</td>
+                  <td>Event type breakdown</td>
+                  <td>Distribution of page_view / click / purchase / signup</td>
+                  <td>Confirm producer is generating all event types</td>
+                </tr>
+                <tr>
+                  <td class="factor">6</td>
+                  <td>Pipeline staleness</td>
+                  <td>Seconds since the newest ingested event</td>
+                  <td>Healthy = ~5–10s; large number = consumer or producer stopped</td>
+                </tr>
+                <tr>
+                  <td class="factor">7</td>
+                  <td>Pipe + channel status</td>
+                  <td>Pipe health JSON + per-channel offset positions</td>
+                  <td>Debug ingestion issues; verify SDK auto-created the pipe</td>
+                </tr>
+                <tr>
+                  <td class="factor">8</td>
+                  <td>Ingestion history</td>
+                  <td>Credits used + bytes + rows from ACCOUNT_USAGE</td>
+                  <td>Cost tracking (note: ~15-minute latency in ACCOUNT_USAGE)</td>
+                </tr>
+                <tr>
+                  <td class="factor">9</td>
+                  <td>Throughput summary</td>
+                  <td>Rows/sec over the last 30 minutes</td>
+                  <td>Performance benchmark; show rows_per_sec metric</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+      </div>
+    </div><!-- end subtab-sp-setup -->
+
+  </div><!-- end tab-snowpipe -->
+
+
+  <!-- ══════════════════════════════════════════
+       TAB 3 — STAGE + SNOWPIPE
+  ══════════════════════════════════════════ -->
+  <div id="tab-stage" class="tab-content">
+
+    <div style="text-align:center;margin-bottom:32px;">
+      <h2 style="font-size:1.9rem;font-weight:700;color:#e6edf3;margin-bottom:8px;">Stage + Snowpipe</h2>
+      <p style="font-size:1rem;color:#8b949e;margin-bottom:16px;">Batch file ingestion with Snowpipe AUTO_INGEST</p>
+      <span style="display:inline-flex;align-items:center;gap:8px;background:#1a2535;border:1px solid #29b5e8;border-radius:20px;padding:6px 16px;font-size:0.78rem;color:#29b5e8;font-weight:500;">
+        ❄️ Snowpipe &nbsp;·&nbsp; AUTO_INGEST = TRUE &nbsp;·&nbsp; Event-Driven &nbsp;·&nbsp; Serverless
+      </span>
+    </div>
+
+    <!-- Sub-tab bar -->
+    <div class="subtab-bar">
+      <button class="subtab-btn active" onclick="switchSubTab('st', 'arch', this)">Architecture</button>
+      <button class="subtab-btn" onclick="switchSubTab('st', 'deep', this)">Deep Dive</button>
+      <button class="subtab-btn" onclick="switchSubTab('st', 'setup', this)">Setup Guide</button>
+    </div>
+
+    <!-- ── Sub-tab: Architecture ── -->
+    <div id="subtab-st-arch" class="subtab-content active">
+
+      <!-- Flow diagram -->
+      <div class="flow">
+
+        <div class="box">
+          <div class="icon-wrap producer">📄</div>
+          <div class="box-label">Sample .jsonl.gz</div>
+          <div class="box-sub">Gzipped JSON Lines<br>from upstream producer</div>
+        </div>
+
+        <div class="arrow">
+          <div class="arrow-line green"></div>
+          <div class="arrow-label">file upload<br>(CLI / SDK / console)</div>
+        </div>
+
+        <div class="box">
+          <div class="icon-wrap kafka">🪣</div>
+          <div class="box-label">External Stage</div>
+          <div class="box-sub">S3 / ADLS / GCS<br>CLICKSTREAM_STAGE</div>
+        </div>
+
+        <div class="arrow">
+          <div class="arrow-line purple"></div>
+          <div class="arrow-label">cloud storage<br>event notification</div>
+        </div>
+
+        <div class="box">
+          <div class="icon-wrap consumer">🔔</div>
+          <div class="box-label">Event Notification</div>
+          <div class="box-sub">S3 → SQS<br>ADLS → Event Grid<br>GCS → Pub/Sub</div>
+        </div>
+
+        <div class="arrow">
+          <div class="arrow-line blue"></div>
+          <div class="arrow-label">triggers<br>Snowpipe</div>
+        </div>
+
+        <div class="box">
+          <div class="icon-wrap snowflake">❄️</div>
+          <div class="box-label">Snowpipe<br>AUTO_INGEST</div>
+          <div class="box-sub">Serverless<br>CLICKSTREAM_PIPE<br>COPY INTO</div>
+        </div>
+
+        <div class="arrow">
+          <div class="arrow-line cyan"></div>
+          <div class="arrow-label">loads rows<br>into table</div>
+        </div>
+
+        <div class="box">
+          <div class="icon-wrap table">🗄️</div>
+          <div class="box-label">CLICKSTREAM</div>
+          <div class="box-sub">KAFKA_DEMO<br>.BATCH<br>.CLICKSTREAM</div>
+        </div>
+
+      </div>
+
+      <!-- Detail cards -->
+      <div class="cards">
+
+        <div class="card">
+          <div class="card-header">
+            <div class="card-icon green">📄</div>
+            <h3>Sample Files (.jsonl.gz)</h3>
+          </div>
+          <p>Gzipped JSON Lines files representing upstream Kafka producer output. Each line is one event with <code>event_id</code>, <code>event_type</code>, <code>user_id</code>, <code>payload</code>, <code>event_ts</code>, <code>kafka_offset</code>, and <code>kafka_partition</code>. Files can be pre-generated or created by the included generator script.</p>
+          <div class="tag-list">
+            <span class="tag green">.jsonl.gz</span>
+            <span class="tag green">~1000 rows/file</span>
+            <span class="tag green">gzip compressed</span>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <div class="card-icon purple">🪣</div>
+            <h3>External Stage (Cloud Storage)</h3>
+          </div>
+          <p>Cloud-agnostic stage backed by a storage integration. Works with AWS S3, Azure ADLS, or GCS. The stage object (<code>CLICKSTREAM_STAGE</code>) is a prerequisite — it must be created with a storage integration and configured with event notifications before Snowpipe can auto-ingest.</p>
+          <div class="tag-list">
+            <span class="tag purple">storage integration</span>
+            <span class="tag purple">S3 / ADLS / GCS</span>
+            <span class="tag purple">event notification</span>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <div class="card-icon blue">❄️</div>
+            <h3>Snowpipe AUTO_INGEST</h3>
+          </div>
+          <p>Event-driven serverless ingestion. When a new file lands in the stage, the cloud event notification triggers Snowpipe, which runs a <code>COPY INTO</code> command automatically. No warehouse needed — compute is billed at 1.5x serverless credit rate.</p>
+          <div class="tag-list">
+            <span class="tag blue">serverless</span>
+            <span class="tag blue">event-driven</span>
+            <span class="tag blue">file-level dedup</span>
+            <span class="tag blue">1.5x credit rate</span>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <div class="card-icon cyan">🗄️</div>
+            <h3>CLICKSTREAM Table</h3>
+          </div>
+          <p>Landing table in <code>KAFKA_DEMO.BATCH</code>. The <code>payload</code> column is <code>VARIANT</code>, storing the nested JSON as a queryable Snowflake object. The <code>ingest_file</code> column captures <code>METADATA$FILENAME</code> for file-level lineage and debugging.</p>
+          <div class="tag-list">
+            <span class="tag cyan">KAFKA_DEMO.BATCH</span>
+            <span class="tag cyan">VARIANT payload</span>
+            <span class="tag cyan">METADATA$FILENAME</span>
+            <span class="tag cyan">file lineage</span>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Step-by-step -->
+      <p class="steps-title">How a file flows end-to-end</p>
+
+      <div class="steps">
+
+        <div class="step">
+          <div class="step-num s1">1</div>
+          <div class="step-line"></div>
+          <div class="step-body">
+            <h4>File lands in cloud storage</h4>
+            <p>A <code>.jsonl.gz</code> file is uploaded to the external stage path (e.g., <code>s3://your-bucket/kafka-demo/clickstream_batch_001.jsonl.gz</code>).</p>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num s2">2</div>
+          <div class="step-line"></div>
+          <div class="step-body">
+            <h4>Storage event notification fires</h4>
+            <p>The cloud provider emits an event (S3 Event Notification → SQS, Azure Event Grid, or GCS Pub/Sub) indicating a new object was created.</p>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num s3">3</div>
+          <div class="step-line"></div>
+          <div class="step-body">
+            <h4>Snowflake SQS queue receives event</h4>
+            <p>Snowflake's internal SQS queue (configured during pipe creation) receives the notification and enqueues the file for loading.</p>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num s4">4</div>
+          <div class="step-line"></div>
+          <div class="step-body">
+            <h4>Snowpipe loads file via COPY INTO</h4>
+            <p>Snowpipe serverless compute executes the <code>COPY INTO</code> statement defined in the pipe, parsing the JSON and inserting rows into the target table. Compute is billed at 1.5x serverless credit rate.</p>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num s5">5</div>
+          <div class="step-line"></div>
+          <div class="step-body">
+            <h4>Rows queryable in CLICKSTREAM</h4>
+            <p>Rows are immediately visible in <code>KAFKA_DEMO.BATCH.CLICKSTREAM</code>. The file is recorded in Snowpipe's load history (64-day window) to prevent duplicate loading if the same file appears again.</p>
+          </div>
+        </div>
+
+      </div>
+
+    </div><!-- end subtab-st-arch -->
+
+    <!-- ── Sub-tab: Deep Dive ── -->
+    <div id="subtab-st-deep" class="subtab-content">
+      <div class="deep-dive">
+
+        <div class="section">
+          <p class="section-title">AUTO_INGEST Mechanism</p>
+
+          <p style="font-size:0.85rem;color:#8b949e;margin-bottom:24px;line-height:1.6;">When <code>AUTO_INGEST = TRUE</code>, Snowpipe subscribes to cloud storage event notifications. The mechanism varies by cloud provider:</p>
+
+          <div class="consider-grid" style="margin-bottom:32px;">
+            <div class="consider-card">
+              <div class="c-header">
+                <span class="c-badge blue">AWS</span>
+                <h4>S3 Event → SQS</h4>
+              </div>
+              <p>S3 bucket sends <code>s3:ObjectCreated:*</code> events to an SQS queue owned by Snowflake. The queue ARN is returned by <code>SHOW PIPES</code> — you configure S3 to publish to it.</p>
+            </div>
+            <div class="consider-card">
+              <div class="c-header">
+                <span class="c-badge cyan">Azure</span>
+                <h4>Blob → Event Grid → Queue</h4>
+              </div>
+              <p>Azure Blob Storage emits events via Event Grid. Snowflake creates a Storage Queue subscription. You authorize the integration via Azure AD consent.</p>
+            </div>
+            <div class="consider-card">
+              <div class="c-header">
+                <span class="c-badge green">GCP</span>
+                <h4>GCS → Pub/Sub</h4>
+              </div>
+              <p>GCS sends object finalize notifications to a Pub/Sub topic. Snowflake creates a subscription to that topic. You grant publish permissions to the GCS service account.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="section">
+          <p class="section-title">AUTO_INGEST = TRUE vs FALSE</p>
+
+          <div class="cmp-wrap">
+            <table class="cmp-table">
+              <thead>
+                <tr>
+                  <th>Factor</th>
+                  <th class="hl">AUTO_INGEST = TRUE</th>
+                  <th>AUTO_INGEST = FALSE + manual refresh</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td class="factor">Trigger</td>
+                  <td class="hl">Cloud storage event notification</td>
+                  <td>Scheduled <code>ALTER PIPE ... REFRESH</code></td>
+                </tr>
+                <tr>
+                  <td class="factor">Latency</td>
+                  <td class="hl">Seconds (event-driven)</td>
+                  <td>Depends on schedule</td>
+                </tr>
+                <tr>
+                  <td class="factor">Compute</td>
+                  <td>Serverless — Snowpipe, 1.5x</td>
+                  <td>Serverless — Snowpipe, 1.5x</td>
+                </tr>
+                <tr>
+                  <td class="factor">Deduplication</td>
+                  <td>File-level via load history</td>
+                  <td>File-level via load history</td>
+                </tr>
+                <tr>
+                  <td class="factor">Ordering</td>
+                  <td>No guarantee</td>
+                  <td>No guarantee</td>
+                </tr>
+                <tr>
+                  <td class="factor">Internal stage support</td>
+                  <td><span class="no">No</span></td>
+                  <td><span class="yes">Yes</span></td>
+                </tr>
+                <tr>
+                  <td class="factor">Setup complexity</td>
+                  <td>Event notification config required</td>
+                  <td>Just a pipe definition</td>
+                </tr>
+                <tr>
+                  <td class="factor">File cleanup</td>
+                  <td>Manual / lifecycle policy</td>
+                  <td>Manual / lifecycle policy</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="callout" style="margin-top:20px;">
+            <strong>ALTER PIPE ... REFRESH is not for regular use</strong>
+            Per Snowflake documentation, <code>ALTER PIPE ... REFRESH</code> is intended for one-time recovery or backfilling — not as a regular ingestion trigger. For ongoing ingestion, AUTO_INGEST with event notifications is the correct approach.
+          </div>
+        </div>
+
+        <div class="section">
+          <p class="section-title">Deduplication &amp; Best Practices</p>
+
+          <p style="font-size:0.85rem;color:#8b949e;margin-bottom:16px;line-height:1.6;">Snowpipe maintains a <strong>64-day load history</strong> per pipe. If the same file (identified by path + size + last-modified) appears again within that window, it is silently skipped. This provides file-level exactly-once semantics without any application-side logic.</p>
+
+          <p style="font-size:0.85rem;color:#8b949e;margin-bottom:16px;line-height:1.6;"><strong>Best practices for files:</strong></p>
+          <ul style="font-size:0.82rem;color:#8b949e;line-height:1.8;padding-left:18px;margin-bottom:24px;">
+            <li>Compress files with gzip — Snowflake auto-detects gzip and decompresses on load</li>
+            <li>Use immutable file names (include a batch ID or timestamp) so file identity is stable</li>
+            <li>Aim for files between 100 MB – 250 MB (compressed) for optimal load performance</li>
+            <li>Avoid modifying files after upload — Snowpipe may not re-process modified files within the dedup window</li>
+          </ul>
+
+          <div class="callout" style="margin-bottom:0;">
+            <strong>Decoupling note</strong>
+            File generation and file landing in cloud storage are decoupled steps. In production, the customer environment (e.g., Azure ADLS) determines how files arrive in the stage. The demo's sample files simply represent what upstream producer output looks like — the "how they get there" is environment-specific and out of scope for this demo.
+          </div>
+        </div>
+
+      </div>
+    </div><!-- end subtab-st-deep -->
+
+    <!-- ── Sub-tab: Setup Guide ── -->
+    <div id="subtab-st-setup" class="subtab-content">
+      <div style="max-width:960px;margin:0 auto;">
+
+        <div class="setup-section">
+          <p class="section-title">Prerequisite</p>
+
+          <div class="callout" style="margin-bottom:24px;">
+            <strong>External stage + event notification required</strong>
+            An external stage <code>KAFKA_DEMO.BATCH.CLICKSTREAM_STAGE</code> backed by a storage integration (AWS S3, Azure ADLS, or GCS) plus an <code>AUTO_INGEST=TRUE</code> pipe must already exist. Cloud setup (storage integration, IAM/role, event notification) is environment-specific and out of scope for this demo.<br><br>
+            See Snowflake documentation for setup guides:
+            <a href="https://docs.snowflake.com/en/user-guide/data-load-snowpipe-auto-s3" target="_blank" style="color:#58a6ff;text-decoration:none;">Automating Snowpipe for S3</a> |
+            <a href="https://docs.snowflake.com/en/user-guide/data-load-snowpipe-auto-azure" target="_blank" style="color:#58a6ff;text-decoration:none;">Azure</a> |
+            <a href="https://docs.snowflake.com/en/user-guide/data-load-snowpipe-auto-gcs" target="_blank" style="color:#58a6ff;text-decoration:none;">GCS</a>
+          </div>
+        </div>
+
+        <div class="setup-section">
+          <p class="section-title">1. Create Snowflake Objects</p>
+
+          <div class="code-block">
+            <div class="cb-header">
+              <span>demos/stage-snowpipe/setup/snowflake_setup.sql</span>
+              <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+            </div>
+            <pre>USE ROLE SYSADMIN;
+
+CREATE DATABASE IF NOT EXISTS KAFKA_DEMO;
+CREATE SCHEMA IF NOT EXISTS KAFKA_DEMO.BATCH;
+
+CREATE OR REPLACE TABLE KAFKA_DEMO.BATCH.CLICKSTREAM (
+    event_id        VARCHAR,
+    event_type      VARCHAR,
+    user_id         VARCHAR,
+    payload         VARIANT,
+    event_ts        TIMESTAMP_NTZ,
+    kafka_offset    NUMBER,
+    kafka_partition NUMBER,
+    ingest_file     VARCHAR
+);
+
+CREATE OR REPLACE PIPE KAFKA_DEMO.BATCH.CLICKSTREAM_PIPE
+  AUTO_INGEST = TRUE
+AS
+COPY INTO KAFKA_DEMO.BATCH.CLICKSTREAM
+    (event_id, event_type, user_id, payload, event_ts,
+     kafka_offset, kafka_partition, ingest_file)
+FROM (
+    SELECT
+        $1:event_id::VARCHAR,
+        $1:event_type::VARCHAR,
+        $1:user_id::VARCHAR,
+        $1:payload,
+        $1:event_ts::TIMESTAMP_NTZ,
+        $1:kafka_offset::NUMBER,
+        $1:kafka_partition::NUMBER,
+        METADATA$FILENAME
+    FROM @KAFKA_DEMO.BATCH.CLICKSTREAM_STAGE
+)
+FILE_FORMAT = (TYPE = 'JSON');</pre>
+          </div>
+        </div>
+
+        <div class="setup-section">
+          <p class="section-title">2. Get Sample Files</p>
+
+          <p style="font-size:0.85rem;color:#8b949e;margin-bottom:16px;line-height:1.6;">Two options for obtaining sample data files:</p>
+
+          <p style="font-size:0.85rem;color:#8b949e;margin-bottom:12px;line-height:1.6;"><strong style="color:#e6edf3;">(A) Use committed samples</strong> — pre-generated gzipped JSON Lines files in <code>demos/stage-snowpipe/samples/</code> (e.g., <code>clickstream_batch_001.jsonl.gz</code>, <code>clickstream_batch_002.jsonl.gz</code>, etc.).</p>
+
+          <p style="font-size:0.85rem;color:#8b949e;margin-bottom:12px;line-height:1.6;"><strong style="color:#e6edf3;">(B) Generate fresh files</strong> — use the included generator script to produce new sample batches:</p>
+
+          <div class="code-block">
+            <div class="cb-header">
+              <span>Terminal — generate sample files</span>
+              <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+            </div>
+            <pre>cd demos/stage-snowpipe
+pip install -r requirements.txt
+python generate_events.py --files 5 --rows 1000</pre>
+          </div>
+
+          <p style="font-size:0.8rem;color:#8b949e;margin-bottom:0;line-height:1.6;">This writes <code>.jsonl.gz</code> files to <code>./output/</code>. Files are gzipped JSON Lines — Snowflake auto-detects gzip compression during COPY INTO.</p>
+        </div>
+
+        <div class="setup-section">
+          <p class="section-title">3. Land Files in Cloud Storage</p>
+
+          <div class="callout" style="margin-bottom:16px;">
+            <strong>Environment-specific step</strong>
+            How files reach cloud storage depends on your infrastructure. Below are example CLI commands for common providers. You can also drag-and-drop via the cloud console.
+          </div>
+
+          <div class="code-block">
+            <div class="cb-header">
+              <span>Terminal — upload to cloud storage (examples)</span>
+              <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+            </div>
+            <pre># AWS S3
+aws s3 cp samples/ s3://&lt;your-bucket&gt;/kafka-demo/ --recursive
+
+# Azure Blob Storage
+az storage blob upload-batch -d &lt;container&gt;/kafka-demo -s samples/
+
+# Google Cloud Storage
+gsutil cp samples/*.jsonl.gz gs://&lt;your-bucket&gt;/kafka-demo/</pre>
+          </div>
+        </div>
+
+        <div class="setup-section">
+          <p class="section-title">4. Watch Snowpipe Load</p>
+
+          <p style="font-size:0.85rem;color:#8b949e;margin-bottom:16px;line-height:1.6;">Once files land in the stage and the event notification fires, Snowpipe will automatically load them. Use these queries to monitor progress:</p>
+
+          <div class="code-block">
+            <div class="cb-header">
+              <span>demos/stage-snowpipe/status.sql</span>
+              <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+            </div>
+            <pre>-- Check pipe status (shows pending file count, last received message time)
+SELECT SYSTEM$PIPE_STATUS('KAFKA_DEMO.BATCH.CLICKSTREAM_PIPE');
+
+-- Row count — should climb after files are loaded
+SELECT COUNT(*) FROM KAFKA_DEMO.BATCH.CLICKSTREAM;
+
+-- Rows per file — verify each file was loaded
+SELECT
+    ingest_file,
+    COUNT(*) AS row_count
+FROM KAFKA_DEMO.BATCH.CLICKSTREAM
+GROUP BY ingest_file
+ORDER BY ingest_file;</pre>
+          </div>
+        </div>
+
+      </div>
+    </div><!-- end subtab-st-setup -->
+
+  </div><!-- end tab-stage -->
+
+
+  <script>
+    function copyCode(btn) {
+      const pre = btn.closest('.code-block').querySelector('pre');
+      const origText = btn.textContent;
+      navigator.clipboard.writeText(pre.textContent).then(() => {
+        btn.textContent = 'Copied!';
+        btn.classList.add('copied');
+        setTimeout(() => { btn.textContent = origText; btn.classList.remove('copied'); }, 2000);
+      }).catch(() => {
+        btn.textContent = 'Error';
+        setTimeout(() => { btn.textContent = origText; }, 2000);
+      });
+    }
+    function switchTab(name, btn) {
+      document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+      document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+      document.getElementById('tab-' + name).classList.add('active');
+      btn.classList.add('active');
+    }
+
+    function switchSubTab(prefix, name, btn) {
+      const parent = btn.closest('.tab-content');
+      parent.querySelectorAll('.subtab-content').forEach(el => el.classList.remove('active'));
+      parent.querySelectorAll('.subtab-btn').forEach(el => el.classList.remove('active'));
+      document.getElementById('subtab-' + prefix + '-' + name).classList.add('active');
+      btn.classList.add('active');
+    }
+  </script>
+
+</body>
+</html>

@@ -1,0 +1,14 @@
+USE ROLE SYSADMIN;
+
+CREATE DATABASE IF NOT EXISTS KAFKA_DEMO;
+CREATE SCHEMA IF NOT EXISTS KAFKA_DEMO.STREAMING;
+
+CREATE OR REPLACE TABLE KAFKA_DEMO.STREAMING.CLICKSTREAM (
+    event_id        VARCHAR,
+    event_type      VARCHAR,
+    user_id         VARCHAR,
+    payload         VARIANT,
+    event_ts        TIMESTAMP_NTZ,
+    kafka_offset    NUMBER,
+    kafka_partition NUMBER
+);

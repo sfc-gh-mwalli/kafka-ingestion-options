@@ -1,0 +1,18 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Secrets / config
+.env
+*.json
+!package.json
+
+# OS / editor
+.DS_Store
+
+# Cortex / agent artifacts
+.snowflake/
+
+# Demo output (generated batch files)
+demos/stage-snowpipe/output/
