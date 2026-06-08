@@ -25,10 +25,12 @@ LIST @CLICKSTREAM_STAGE;
 
 
 -- ── 1b. Inspect raw JSON inside the staged files ──────────────────
--- Query the stage directly to see the JSON records sitting in the files
--- BEFORE Snowpipe loads them. The stage FILE_FORMAT is JSON (gzip auto-
--- detected), so $1 is each record as a VARIANT. METADATA$FILENAME shows
--- which file each record came from.
+-- Snowpipe does NOT delete files after loading, so the source files remain
+-- in the stage. Query the stage directly to see the raw JSON that produced
+-- the loaded rows. The stage FILE_FORMAT is JSON (gzip auto-detected), so $1
+-- is each record as a VARIANT. METADATA$FILENAME shows the source file.
+-- (Note: with AUTO_INGEST, files load within seconds of landing, so this
+--  shows the source behind already-loaded rows -- not un-loaded files.)
 SELECT
     METADATA$FILENAME            AS file_name,
     $1                           AS raw_json,

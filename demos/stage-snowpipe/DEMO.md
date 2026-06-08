@@ -107,14 +107,15 @@ The moment files land, the storage event notification fires and Snowpipe
 loads them (typically within seconds to ~1 minute). Run the queries in
 [`status.sql`](status.sql) to watch progress and narrate the flow:
 
-- Start with an **empty table** (row count 0) and the pipe `RUNNING`.
-- After uploading, show the **files in the stage** (`LIST @stage`) and the **raw
-  JSON inside them** (`SELECT $1 FROM @stage`) — the data is just sitting in
-  cloud storage, queryable before any load.
-- Re-run `SYSTEM$PIPE_STATUS` — point out
+- Start by showing the **before state**: empty table (row count 0) and **empty
+  stage** (`LIST @stage` returns nothing), pipe `RUNNING`. This is the only true
+  "before" snapshot — with `AUTO_INGEST`, files load within seconds of landing.
+- **Then land files.** Re-run `SYSTEM$PIPE_STATUS` — point out
   `lastReceivedMessageTimestamp` and `pendingFileCount` changing as the event arrives.
 - Re-run the **row count** — it climbs within seconds, no warehouse, no manual COPY.
 - Show **rows per file** (lineage via `METADATA$FILENAME`) — each file loaded once.
+- The source files **persist** in the stage (Snowpipe doesn't purge), so query the
+  stage (`LIST @stage` + `SELECT $1 FROM @stage`) to show the raw JSON behind the rows.
 - Emphasize: **serverless & event-driven**, **file-level dedup**, **seconds latency**.
 
 | Query | Shows |
