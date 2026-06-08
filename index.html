@@ -2707,7 +2707,8 @@ gsutil cp output/*.jsonl.gz gs://&lt;your-bucket&gt;/kafka-demo/</pre>
             As files land, narrate the event-driven flow using the <strong>Status Queries</strong> tab:
             <ul style="margin:10px 0 0 18px;padding:0;font-size:0.82rem;line-height:1.7;">
               <li>Start with an <strong>empty table</strong> (row count 0) and the pipe <code>RUNNING</code>.</li>
-              <li>Upload files, then re-run <code>SYSTEM$PIPE_STATUS</code> — point out <code>lastReceivedMessageTimestamp</code> and <code>pendingFileCount</code> changing as the S3 event arrives.</li>
+              <li>After uploading, show the <strong>files in the stage</strong> (<code>LIST @stage</code>) and the <strong>raw JSON inside them</strong> (<code>SELECT $1 FROM @stage</code>) — the data is just sitting in cloud storage, queryable before any load.</li>
+              <li>Re-run <code>SYSTEM$PIPE_STATUS</code> — point out <code>lastReceivedMessageTimestamp</code> and <code>pendingFileCount</code> changing as the S3 event arrives.</li>
               <li>Re-run the <strong>row count</strong> — it climbs within seconds, no warehouse, no manual COPY.</li>
               <li>Show <strong>rows per file</strong> (lineage via <code>METADATA$FILENAME</code>) to prove each file loaded once.</li>
               <li>Emphasize: <strong>serverless &amp; event-driven</strong>, <strong>file-level dedup</strong>, and <strong>seconds latency</strong> — the customer's existing tools just drop files in storage.</li>
@@ -2735,6 +2736,31 @@ gsutil cp output/*.jsonl.gz gs://&lt;your-bucket&gt;/kafka-demo/</pre>
         </div><!-- end stset-run -->
 
         <div id="subsubtab-stset-status" class="subsubtab-content">
+        <div class="setup-section">
+          <p class="section-title">Inspect Staged Files</p>
+
+          <p style="font-size:0.85rem;color:#8b949e;margin-bottom:16px;line-height:1.6;">See the files in the stage and the raw JSON inside them — directly, before Snowpipe loads anything. The stage's <code>FILE_FORMAT</code> is JSON (gzip auto-detected), so <code>$1</code> is each record as a VARIANT.</p>
+
+          <div class="code-block">
+            <div class="cb-header">
+              <span>Snowflake — list files &amp; read their JSON</span>
+              <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+            </div>
+            <pre>-- Files currently in the stage
+LIST @KAFKA_DEMO.BATCH.CLICKSTREAM_STAGE;
+
+-- Raw JSON inside the staged files (before/without loading)
+SELECT
+    METADATA$FILENAME            AS file_name,
+    $1                           AS raw_json,
+    $1:event_id::VARCHAR         AS event_id,
+    $1:event_type::VARCHAR       AS event_type,
+    $1:payload:country::VARCHAR  AS country
+FROM @KAFKA_DEMO.BATCH.CLICKSTREAM_STAGE
+LIMIT 20;</pre>
+          </div>
+        </div>
+
         <div class="setup-section">
           <p class="section-title">Watch Snowpipe Load</p>
 

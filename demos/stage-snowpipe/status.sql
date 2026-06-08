@@ -24,6 +24,22 @@ TRUNCATE TABLE CLICKSTREAM;
 LIST @CLICKSTREAM_STAGE;
 
 
+-- ── 1b. Inspect raw JSON inside the staged files ──────────────────
+-- Query the stage directly to see the JSON records sitting in the files
+-- BEFORE Snowpipe loads them. The stage FILE_FORMAT is JSON (gzip auto-
+-- detected), so $1 is each record as a VARIANT. METADATA$FILENAME shows
+-- which file each record came from.
+SELECT
+    METADATA$FILENAME            AS file_name,
+    $1                           AS raw_json,
+    $1:event_id::VARCHAR         AS event_id,
+    $1:event_type::VARCHAR       AS event_type,
+    $1:payload:country::VARCHAR  AS country,
+    $1:payload:amount::FLOAT     AS amount
+FROM @CLICKSTREAM_STAGE
+LIMIT 20;
+
+
 -- ── 2. Pipe status ─────────────────────────────────────────────────
 -- executionState should be RUNNING. Watch:
 --   numOutstandingMessagesOnChannel  - events received from cloud storage

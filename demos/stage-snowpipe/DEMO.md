@@ -108,7 +108,10 @@ loads them (typically within seconds to ~1 minute). Run the queries in
 [`status.sql`](status.sql) to watch progress and narrate the flow:
 
 - Start with an **empty table** (row count 0) and the pipe `RUNNING`.
-- After uploading, re-run `SYSTEM$PIPE_STATUS` — point out
+- After uploading, show the **files in the stage** (`LIST @stage`) and the **raw
+  JSON inside them** (`SELECT $1 FROM @stage`) — the data is just sitting in
+  cloud storage, queryable before any load.
+- Re-run `SYSTEM$PIPE_STATUS` — point out
   `lastReceivedMessageTimestamp` and `pendingFileCount` changing as the event arrives.
 - Re-run the **row count** — it climbs within seconds, no warehouse, no manual COPY.
 - Show **rows per file** (lineage via `METADATA$FILENAME`) — each file loaded once.
@@ -117,6 +120,7 @@ loads them (typically within seconds to ~1 minute). Run the queries in
 | Query | Shows |
 |-------|-------|
 | #1 | Files currently in the stage |
+| #1b | Raw JSON inside the staged files (before loading) |
 | #2 | Pipe status — event activity, pending files |
 | #3 | Live row count (run repeatedly) |
 | #4 | Rows per source file (file-level lineage) |
